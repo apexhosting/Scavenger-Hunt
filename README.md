@@ -1,2 +1,2 @@
-# Scavenger-Hunt-
+# Scavenger-Hunt
 A Simple Scavenger Hunt Plugin
