@@ -1,0 +1,14 @@
+name: Scavenger
+version: 1.0
+main: dev.geri.scavenger.Scavenger
+api-version: 1.18
+prefix: Scavenger
+authors: [ Geri ]
+description: A simple scavenger hunt plugin
+website: https://geri.dev/
+
+commands:
+  scavenger:
+    aliases: [ s ]
+    permission: scavenger.help
+    description: Manage all commands from the scavenger plugin

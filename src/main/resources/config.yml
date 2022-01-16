@@ -1,0 +1,51 @@
+lang:
+  error: "&cAn unknown exception occurred, please report this to staff!"
+  player-only: "&cYou must be a player to execute this command!"
+  reload: "&aSuccessfully reloaded the plugin!"
+
+  game-started: "&aGame starting..."
+
+  invalid-block: "&cThis is not a valid return spot block!"
+  block-already-added: "&cThis block is already marked as a return spot!"
+  block-not-added: "&cThis block is not marked as a return spot currently!"
+  block-added: "&aSuccessfully added this block as a return spot!"
+  block-removed: "&aSuccessfully removed block from return spots!"
+
+  no-world-provided: "&cYou must provide a world when starting a game from the console!"
+  game-in-progress: "&cThis world already has a game in progress!"
+
+  game-not-in-progress: "&cYou are not in a game currently!"
+  no-item-provided: "&cYou must provide an item!"
+  incorrect-item-provided: "&cThis item is not required for this round!"
+  item-not-enough: "&cYou need &4%required% &cof this item, you currently only have &%required%&c! "
+  item-accepted: "&aCongrats, you got &2%current% &aout of &2%total%&a!"
+  items-left: "&7Items left: &3%items%"
+
+  help-lines:
+    - "Todo"
+
+templates:
+  test_items:
+    test item:
+      material: ENCHANTING_TABLE
+      amount: 1
+
+    anvil:
+      material: ANVIL
+      amount: 2
+      name: "Heavy Lifting or somat"
+
+    appel no:
+      material: ENCHANTED_GOLDEN_APPLE
+      amount: 1
+
+    shovvleeee:
+      material: DIAMOND_SHOVEL
+      enchants:
+        mending: 1
+        unbreaking: 1
+
+  your_items_2:
+    test v2:
+      material: STONE
+      amount: 64
