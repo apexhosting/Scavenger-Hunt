@@ -82,6 +82,8 @@ public final class HexUtils {
      * @return A color-replaced message
      */
     public static String colorify(String message) {
+        if (message == null) return null;
+
         String parsed = message;
         parsed = parseRainbow(parsed);
         parsed = parseGradients(parsed);
