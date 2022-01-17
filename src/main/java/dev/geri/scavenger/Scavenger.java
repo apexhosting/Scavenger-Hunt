@@ -43,7 +43,9 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
         this.gameManager = new GameManager(this, logger);
 
         // Load config settings
-        this.reload();
+        boolean loadSuccess = this.reload();
+
+        if (!loadSuccess) return;
 
         // Register events
         Bukkit.getPluginManager().registerEvents(new EventListener(this, gameManager), this);
@@ -55,7 +57,7 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
         this.gameManager.cleanUpEverything();
     }
 
-    private void reload() {
+    private boolean reload() {
         this.reloadConfig();
         this.saveDefaultConfig();
         this.config = this.getConfig();
@@ -66,7 +68,10 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
         } catch (Exception exception) {
             logger.severe("There was an issue loading one or more of the configuration settings: " + exception.getMessage());
             Bukkit.getPluginManager().disablePlugin(this);
+            return false;
         }
+
+        return true;
     }
 
     @Override
@@ -77,9 +82,6 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
         }
 
         switch (args[0].toLowerCase()) {
-
-            case "test" -> {
-            }
 
             case "cheat" -> {
                 if (sender instanceof Player player) {
@@ -130,8 +132,8 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
             }
 
             case "reload" -> {
-                this.reload();
-                sender.sendMessage(getLang("reload"));
+                if (reload()) sender.sendMessage(getLang("reload"));
+                else sender.sendMessage(getLang("reload-fail"));
             }
 
         }

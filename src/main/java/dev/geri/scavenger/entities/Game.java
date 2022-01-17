@@ -48,6 +48,7 @@ public class Game {
     private final ArrayList<Game.ReturnNPC> npcs;
     private final ArrayList<World> allowedWorlds;
     private final ArrayList<ItemStack> requiredItems;
+    private final ArrayList<ItemStack> starterItems;
 
     private Stage stage;
     private Scoreboard scoreboard;
@@ -57,7 +58,7 @@ public class Game {
     /**
      * Create a new game from a template
      */
-    public Game(int requiredPlayers, boolean hardcore, boolean dropItemsOnKill, boolean dropItemsOnDeath, boolean scoreBoardEnabled, int scoreboardShowPlayers, int gracePeriod, int borderSize, int requiredWinners, String id, String displayName, String scoreboardTitle, Location spawnPoint, Location worldBorderCenter, ArrayList<ReturnNPC> npcs, ArrayList<World> allowedWorlds, ArrayList<ItemStack> requiredItems) {
+    public Game(int requiredPlayers, boolean hardcore, boolean dropItemsOnKill, boolean dropItemsOnDeath, boolean scoreBoardEnabled, int scoreboardShowPlayers, int gracePeriod, int borderSize, int requiredWinners, String id, String displayName, String scoreboardTitle, Location spawnPoint, Location worldBorderCenter, ArrayList<ReturnNPC> npcs, ArrayList<World> allowedWorlds, ArrayList<ItemStack> requiredItems, ArrayList<ItemStack> starterItems) {
         this.requiredPlayers = requiredPlayers;
         this.hardcore = hardcore;
         this.dropItemsOnKill = dropItemsOnKill;
@@ -75,6 +76,7 @@ public class Game {
         this.npcs = npcs;
         this.allowedWorlds = allowedWorlds;
         this.requiredItems = requiredItems;
+        this.starterItems = starterItems;
 
         this.stage = Stage.NONE;
         this.pvpEnabled = false;
@@ -99,7 +101,10 @@ public class Game {
             border.setSize(borderSize);
         }
 
-        for (Player player : players) this.playerReturnedItems.put(player, new ArrayList<>());
+        for (Player player : players) {
+            for (ItemStack starterItem : starterItems) player.getInventory().addItem(starterItem);
+            this.playerReturnedItems.put(player, new ArrayList<>());
+        }
 
         this.stage = Stage.GRACE_PERIOD;
 

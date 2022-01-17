@@ -2,6 +2,7 @@ lang:
   error: "&cAn unknown exception occurred, please report this to staff!"
   player-only: "&cYou must be a player to execute this command!"
   reload: "&aSuccessfully reloaded the plugin!"
+  reload-fail: "&cThere was an error reloading the plugin! Please review the console for more information."
   no-pvp: "&cYou are not allowed to damage players during grace period!"
 
   game-started: "&aGame starting..."
@@ -83,8 +84,52 @@ games:
       - world_nether
       - world_the_end
 
+    starter-items:
+      book:
+        material: WRITTEN_BOOK
+        name: "&4&lStarter Instructions"
+        hide-enchants: true
+        enchantments:
+          mending: 1
+        author: "&cDoug"
+        type: original
+        pages:
+          1: |
+            somat hello hello yes
+            somat hello hello yes
+            &csomat hello hello yes
+            somat hello hello yes
+            somat hello hello yes
+            somaat hello hello yes
+            aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          2: |
+            REEEEEEEEEEEEEEEEEEEEE
+
+      stone_axe_yes:
+        enchants:
+          efficiency: 5
+          unbreaking: 3
+          mending: 2
+        material: STONE_AXE
+        lore:
+          - "stonks"
+          - "&chello!"
+
     # The required items for someone to win
     required-items:
+      test:
+        material: BARRIER
+        name: "<g#5:#F53803:#F5D020>&kaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        lore:
+          - "<g#5:#F53803:#F5D020>&kaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          - "<g#5:#F53803:#F5D020>&kaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          - "<g#5:#F53803:#F5D020>&kaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          - "<g#5:#F53803:#F5D020>&kaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        hide-enchants: true
+        enchants:
+          mending: 1
+          unbreaking: 1
+
       dirts:
         material: DIRT
         amount: 64

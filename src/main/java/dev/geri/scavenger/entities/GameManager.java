@@ -1,5 +1,6 @@
 package dev.geri.scavenger.entities;
 
+import dev.geri.scavenger.utils.HexUtils;
 import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.trait.LookClose;
@@ -9,7 +10,9 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.BookMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.Plugin;
 
@@ -107,49 +110,95 @@ public class GameManager {
                 }
             }};
 
-
             // Load items
-            ArrayList<ItemStack> requiredItems = new ArrayList<>();
-            for (String itemName : config.getConfigurationSection(gamePath + "required-items").getKeys(false)) {
+            ArrayList<ItemStack> requiredItems = this.getItemsFromConfig(config, gamePath + "required-items");
+            ArrayList<ItemStack> starterItems = this.getItemsFromConfig(config, gamePath + "starter-items");
 
-                // Basic item settings
-                String itemPath = gamePath + ".required-items." + itemName + ".";
-                Material material = null;
-                String name = null;
-                int amount = 1;
-                HashMap<Enchantment, Integer> enchantments = new HashMap<>();
+            Game game = new Game(requiredPlayers, hardcore, dropItemsOnKill, dropItemsOnDeath, scoreBoardEnabled, scoreboardShowPlayers, gracePeriod, borderSize, requiredWinners, gameName.replaceAll("\\s", "_").toLowerCase(), displayName, scoreboardTitle, spawnPoint, worldBorderCenter, npcs, allowedWorlds, requiredItems, starterItems);
 
-                for (Map.Entry<String, Object> setting : config.getConfigurationSection(itemPath).getValues(false).entrySet()) {
-                    String value = setting.getValue().toString();
-                    switch (setting.getKey().toLowerCase()) {
-                        case "material" -> material = Material.valueOf(value);
-                        case "amount" -> amount = Integer.parseInt(value);
-                        case "name" -> name = value;
-                        case "enchants" -> {
-                            for (Map.Entry<String, Object> enchant : config.getConfigurationSection(itemPath + ".enchants").getValues(false).entrySet()) enchantments.put(Enchantment.getByKey(NamespacedKey.minecraft(enchant.getKey())), Integer.parseInt(enchant.getValue().toString()));
-                        }
-                    }
-                }
-
-                // Double-check material
-                if (material == null) throw new IllegalArgumentException(itemName + " has an invalid material!");
-
-                // Apply settings
-                ItemStack itemStack = new ItemStack(material);
-                itemStack.setAmount(amount);
-                ItemMeta meta = itemStack.getItemMeta();
-                meta.setDisplayName(name);
-                itemStack.setItemMeta(meta);
-
-                // Add enchants
-                for (Map.Entry<Enchantment, Integer> enchantmentEntry : enchantments.entrySet()) itemStack.addEnchantment(enchantmentEntry.getKey(), enchantmentEntry.getValue());
-
-                // Add it to the list
-                requiredItems.add(itemStack);
-            }
-            Game game = new Game(requiredPlayers, hardcore, dropItemsOnKill, dropItemsOnDeath, scoreBoardEnabled, scoreboardShowPlayers, gracePeriod, borderSize, requiredWinners, gameName.replaceAll("\\s", "_").toLowerCase(), displayName, scoreboardTitle, spawnPoint, worldBorderCenter, npcs, allowedWorlds, requiredItems);
             loadedGames.put(gameName, game);
         }
+    }
+
+    private ArrayList<ItemStack> getItemsFromConfig(FileConfiguration config, String basePath) {
+        ArrayList<ItemStack> items = new ArrayList<>();
+
+        for (String itemName : config.getConfigurationSection(basePath).getKeys(false)) {
+
+            // Basic item settings
+            String itemPath = basePath + "." + itemName + ".";
+            Material material = null;
+            String name = null;
+            int amount = 1;
+            boolean hideEnchantments = false;
+            ArrayList<String> lore = new ArrayList<>();
+            HashMap<Enchantment, Integer> enchantments = new HashMap<>();
+
+            // Book-only
+            String author = null;
+            BookMeta.Generation generation = null;
+            ArrayList<String> pages = new ArrayList<>();
+
+            for (Map.Entry<String, Object> setting : config.getConfigurationSection(itemPath).getValues(false).entrySet()) {
+                String value = setting.getValue().toString();
+                switch (setting.getKey().toLowerCase()) {
+                    case "material" -> material = Material.valueOf(value);
+                    case "amount" -> amount = Integer.parseInt(value);
+                    case "name" -> name = HexUtils.colorify(value);
+                    case "hide-enchants" -> hideEnchantments = Boolean.parseBoolean(value);
+                    case "lore" -> {
+                        for (String loreLine : config.getStringList(itemPath + ".lore")) lore.add(HexUtils.colorify(loreLine));
+                    }
+                    case "enchants" -> {
+                        for (Map.Entry<String, Object> enchant : config.getConfigurationSection(itemPath + ".enchants").getValues(false).entrySet()) enchantments.put(Enchantment.getByKey(NamespacedKey.minecraft(enchant.getKey())), Integer.parseInt(enchant.getValue().toString()));
+                    }
+
+                    case "author" -> author = HexUtils.colorify(value);
+
+                    case "pages" -> {
+                        for (Map.Entry<String, Object> entry : config.getConfigurationSection(itemPath + ".pages").getValues(false).entrySet()) {
+                            String page = HexUtils.colorify(entry.getValue().toString());
+                            if (page.length() > 256) throw new IllegalArgumentException("Books must have less than 256 characters per page, page number: #" + entry.getKey() + ", item: " + itemName);
+                            pages.add(page);
+                        }
+
+                        if (pages.size() > 100) throw new IllegalArgumentException("Books must be less than 100 pages long!");
+                    }
+
+                    case "type" -> generation = BookMeta.Generation.valueOf(value.toUpperCase());
+                }
+            }
+
+            // Double-check material
+            if (material == null) throw new IllegalArgumentException(itemName + " has an invalid material!");
+
+            // Apply settings
+            ItemStack itemStack = new ItemStack(material);
+            itemStack.setAmount(amount);
+
+            if (material == Material.WRITTEN_BOOK) {
+                BookMeta bookMeta = (BookMeta) itemStack.getItemMeta();
+                bookMeta.setAuthor(author);
+                bookMeta.setPages(pages);
+                bookMeta.setGeneration(generation);
+                bookMeta.setTitle(name);
+                itemStack.setItemMeta(bookMeta);
+            }
+
+            ItemMeta meta = itemStack.getItemMeta();
+            if (name != null && name.length() > 0) meta.setDisplayName(name);
+            if (lore.size() > 0) meta.setLore(lore);
+            if (hideEnchantments) meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            itemStack.setItemMeta(meta);
+
+            // Add enchants
+            for (Map.Entry<Enchantment, Integer> enchantmentEntry : enchantments.entrySet()) itemStack.addUnsafeEnchantment(enchantmentEntry.getKey(), enchantmentEntry.getValue());
+
+            // Add it to the list
+            items.add(itemStack);
+        }
+
+        return items;
     }
 
     /**
