@@ -6,9 +6,11 @@ prefix: Scavenger
 authors: [ Geri ]
 description: A simple scavenger hunt plugin
 website: https://geri.dev/
+depend:
+  - Citizens
 
 commands:
   scavenger:
-    aliases: [ s ]
+    aliases: [s, game]
     permission: scavenger.help
     description: Manage all commands from the scavenger plugin
