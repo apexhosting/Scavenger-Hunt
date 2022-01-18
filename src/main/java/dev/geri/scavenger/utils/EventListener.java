@@ -13,6 +13,8 @@ import org.bukkit.event.entity.EntityDamageByBlockEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -137,6 +139,35 @@ public class EventListener implements Listener {
         }
     }
 
+
+    @EventHandler
+    public void onInventoryMoveItem(InventoryMoveItemEvent e) {
+        if (!(e.getSource().getHolder() instanceof Player player)) return;
+
+        Game game = gameManager.getPendingGame(player);
+        if (game == null || !game.isInProgress()) return;
+
+        if (!game.getPlayerInventories().containsValue(e.getDestination())) return;
+
+        e.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onInventoryClick(InventoryClickEvent e) {
+        if (!(e.getWhoClicked() instanceof Player player)) return;
+        if (e.getClickedInventory() == null) return;
+
+        Game game = gameManager.getPendingGame(player);
+        if (game == null || !game.isInProgress()) return;
+
+        if (!game.getPlayerInventories().containsValue(e.getInventory())) {
+            return;
+        }
+
+        e.setCancelled(true);
+
+    }
+
     @EventHandler
     public void onPlayerInteractAtEntity(PlayerInteractEntityEvent e) {
         if (e.getHand() == EquipmentSlot.OFF_HAND) return;
@@ -155,7 +186,7 @@ public class EventListener implements Listener {
         }
 
         if (itemStack.getType() == Material.AIR) {
-            player.sendMessage(plugin.getLang("no-item-provided"));
+            player.openInventory(game.getInventory(player, false));
             return;
         }
 
@@ -199,7 +230,12 @@ public class EventListener implements Listener {
         }
 
         StringBuilder sb = new StringBuilder(); // Todo actually implement thi-s as customizable and not ugly
-        for (ItemStack missingItem : updatedMissingItems) sb.append(missingItem.getType().name()).append("(").append(missingItem.getAmount()).append("x), ");
+        int i = 0;
+        for (ItemStack missingItem : updatedMissingItems) {
+            sb.append(missingItem.getAmount()).append("x ").append(Utils.getItemName(missingItem.getType()));
+            i++;
+            if (i < updatedMissingItems.size()) sb.append(", ");
+        }
 
         player.sendMessage(plugin.parsePlaceholders(plugin.getLang("items-left"), "%items%", sb));
     }

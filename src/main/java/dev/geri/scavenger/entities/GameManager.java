@@ -5,6 +5,10 @@ import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.trait.LookClose;
 import net.citizensnpcs.trait.SkinTrait;
+import net.md_5.bungee.api.chat.BaseComponent;
+import net.md_5.bungee.api.chat.ComponentBuilder;
+import net.md_5.bungee.api.chat.HoverEvent;
+import net.md_5.bungee.api.chat.hover.content.Text;
 import org.bukkit.*;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.enchantments.Enchantment;
@@ -20,6 +24,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class GameManager {
 
@@ -157,12 +163,12 @@ public class GameManager {
 
                     case "pages" -> {
                         for (Map.Entry<String, Object> entry : config.getConfigurationSection(itemPath + ".pages").getValues(false).entrySet()) {
-                            String page = HexUtils.colorify(entry.getValue().toString());
-                            if (page.length() > 256) throw new IllegalArgumentException("Books must have less than 256 characters per page, page number: #" + entry.getKey() + ", item: " + itemName);
-                            pages.add(page);
+                            String page = entry.getValue().toString();
+                            //if (page.length() > 256) throw new IllegalArgumentException("Books must have less than 256 characters per page, page number: #" + entry.getKey() + ", item: " + itemName);
+                            pages.add(HexUtils.colorify(page));
                         }
 
-                        if (pages.size() > 100) throw new IllegalArgumentException("Books must be less than 100 pages long!");
+                        if (pages.size() > 50) throw new IllegalArgumentException("Books must be less than 100 pages long!");
                     }
 
                     case "type" -> generation = BookMeta.Generation.valueOf(value.toUpperCase());
@@ -177,9 +183,38 @@ public class GameManager {
             itemStack.setAmount(amount);
 
             if (material == Material.WRITTEN_BOOK) {
+
+                ArrayList<BaseComponent[]> convertedPages = new ArrayList<>();
+
+                // Todo: make this actually work
+
+                for (String page : pages) {
+                    ComponentBuilder cb = new ComponentBuilder();
+                    StringBuilder previousComponent = new StringBuilder();
+                    for (String word : page.split(" ")) {
+
+                        if (word.startsWith("<hover=\"")) { // If there are no spaces V
+                            if (word.endsWith("</hover>")) cb.append(parseHoverComponentes(HexUtils.colorify(word, true))).append(" ").reset();
+                            else previousComponent.append(word).append(" ");
+                        } else {
+                            if (previousComponent.length() == 0) cb.append(word).append(" "); // Regular text
+                            else { // If tag is closed
+                                if (word.endsWith("</hover>")) {
+                                    cb.append(parseHoverComponentes(HexUtils.colorify(previousComponent.append(word).toString(), true))).append(" ").reset();
+                                    previousComponent.setLength(0);
+                                } else {
+                                    previousComponent.append(word).append(" ");
+                                }
+                            }
+                        }
+                    }
+
+                    convertedPages.add(cb.create());
+                }
+
                 BookMeta bookMeta = (BookMeta) itemStack.getItemMeta();
                 bookMeta.setAuthor(author);
-                bookMeta.setPages(pages);
+                bookMeta.spigot().setPages(convertedPages);
                 bookMeta.setGeneration(generation);
                 bookMeta.setTitle(name);
                 itemStack.setItemMeta(bookMeta);
@@ -200,6 +235,17 @@ public class GameManager {
 
         return items;
     }
+
+    private BaseComponent[] parseHoverComponentes(String text) {
+        Pattern pattern = Pattern.compile("=\"(\n)?.*\">");
+        Matcher matcher = pattern.matcher(text);
+        String hover = "";
+        if (matcher.find()) hover = matcher.group().replaceAll("^=\"|\">$", "");
+
+        text = text.replaceAll("^<hover=\".*\">|</hover>$", "");
+        return new ComponentBuilder(HexUtils.colorify(text, true)).event(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text(hover))).create();
+    }
+
 
     /**
      * Mark a loaded game as pending/in progress

@@ -1,11 +1,18 @@
 package dev.geri.scavenger.entities;
 
 import dev.geri.scavenger.utils.HexUtils;
+import dev.geri.scavenger.utils.Utils;
 import net.citizensnpcs.api.npc.NPC;
 import org.bukkit.*;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Score;
@@ -55,6 +62,8 @@ public class Game {
     private boolean pvpEnabled;
     private final HashMap<Player, ArrayList<ItemStack>> playerReturnedItems = new HashMap<>();
 
+    private final ArrayList<BukkitTask> scheduleTasks = new ArrayList<org.bukkit.scheduler.BukkitTask>();
+
     /**
      * Create a new game from a template
      */
@@ -94,22 +103,57 @@ public class Game {
         // Spawn NPCs
         for (Game.ReturnNPC npc : npcs) npc.getNPC().spawn(npc.getLocation());
 
-        // Set world borders
-        for (World world : allowedWorlds) {
-            WorldBorder border = world.getWorldBorder();
-            border.setCenter(worldBorderCenter);
-            border.setSize(borderSize);
-        }
-
+        // Give items to players
         for (Player player : players) {
             for (ItemStack starterItem : starterItems) player.getInventory().addItem(starterItem);
             this.playerReturnedItems.put(player, new ArrayList<>());
         }
 
+        // Start countdown
+        this.scheduleTasks.add(new BukkitRunnable() {
+            private int counter = 5; // todo
+
+            @Override
+            public void run() {
+                this.counter--;
+                if (counter != 0) Bukkit.broadcastMessage(counter + " seconds left!"); // todo
+                else {
+                    this.cancel();
+                    startPhase2(plugin);
+                }
+            }
+        }.runTaskTimer(plugin, 0, 20));
+    }
+
+    private void startPhase2(JavaPlugin plugin) {
+
+        Bukkit.broadcastMessage("Best of luck everyone!");
+        this.announceMessage("started!", null, 20, 40, 20, Sound.ENTITY_ENDER_DRAGON_GROWL);
+
+        // Set world borders
+        this.setWorldBorder(borderSize);
+
         this.stage = Stage.GRACE_PERIOD;
 
+        // Todo: ensure schedules for such get deleted if the game is stopped
         if (gracePeriod == 0) this.enablePVP();
-        else if (gracePeriod != -1) Bukkit.getScheduler().runTaskLater(plugin, this::enablePVP, gracePeriod * 1200L);
+        else if (gracePeriod != -1) {
+            this.scheduleTasks.add(new BukkitRunnable() {
+                private final int original = gracePeriod * 60;
+                private int counter = original; // todo
+
+                @Override
+                public void run() {
+                    this.counter--;
+                    if (counter == 0) {
+                        this.cancel();
+                        enablePVP();
+                    } else if (counter == 60 || counter == original / 2 || counter == 30 || counter == 10 || counter <= 5) {
+                        Bukkit.broadcastMessage(counter + " seconds left till pvp!"); // todo
+                    }
+                }
+            }.runTaskTimer(plugin, 0, 20));
+        }
     }
 
     /**
@@ -144,6 +188,14 @@ public class Game {
             }
         }
 
+    }
+
+    private void setWorldBorder(int size) {
+        for (World world : allowedWorlds) {
+            WorldBorder border = world.getWorldBorder();
+            border.setCenter(worldBorderCenter);
+            border.setSize(size, size / 20);
+        }
     }
 
     private HashMap<Player, String> cachedScores;
@@ -190,11 +242,16 @@ public class Game {
      */
     public void stop() {
 
+        // Cancel pending tasks
+        for (BukkitTask task : scheduleTasks) task.cancel();
+
         // Hide scoreboard
         for (Player player : playerReturnedItems.keySet()) {
             player.setScoreboard(Bukkit.getScoreboardManager().getNewScoreboard());
             player.teleport(spawnPoint);
         }
+
+        this.setWorldBorder(20); // todo: perhaps have the spawn point and the world border center be the same to be safe?
 
         // Remove NPCs
         for (Game.ReturnNPC returnNPC : npcs) {
@@ -208,6 +265,54 @@ public class Game {
 
             npc.destroy();
         }
+
+        // Clear stored invs
+        playerInventories.clear();
+    }
+
+    private final HashMap<Player, Inventory> playerInventories = new HashMap<>();
+
+    /**
+     * Get the list of items for a player
+     *
+     * @param player The player to get it for
+     * @return The compiled inventory
+     */
+    public Inventory getInventory(Player player, boolean update) {
+        Inventory inventory = playerInventories.get(player);
+
+        if (inventory == null || update) {
+            // Todo add customization for this
+            inventory = Bukkit.createInventory(player, 27, HexUtils.colorify("&#40B350&lDoug &r&8— &#B94A4D&oMissing Required Items"));
+
+            int i = 9;
+            for (ItemStack item : requiredItems) {
+                if (hasPlayerCompletedItem(player, item)) {
+
+                    item = new ItemStack(item);
+
+                    ItemMeta meta = item.getItemMeta();
+                    meta.setDisplayName(HexUtils.colorify("&a&lCompleted! &8— &f" + item.getAmount() + "x " + Utils.getItemName(item.getType())));
+                    meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+                    item.setItemMeta(meta);
+                    item.addUnsafeEnchantment(Enchantment.MENDING, 1);
+                    item.setType(Material.LIME_DYE);
+                }
+
+                inventory.setItem(i, item);
+                i++;
+            }
+
+            playerInventories.put(player, inventory);
+
+        }
+
+        return inventory;
+    }
+
+    // Todo docs
+    public HashMap<Player, Inventory> getPlayerInventories() {
+        return playerInventories;
     }
 
     /**
@@ -248,6 +353,7 @@ public class Game {
         modifiedItemList.add(item);
         this.playerReturnedItems.put(player, modifiedItemList);
 
+        this.getInventory(player, true);
         this.updateScoreboard();
     }
 

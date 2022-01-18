@@ -14,11 +14,15 @@ import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
-import org.bukkit.event.Listener;
+import org.bukkit.event.*;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.RegisteredListener;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import javax.annotation.Nonnull;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
@@ -50,6 +54,26 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
         // Register events
         Bukkit.getPluginManager().registerEvents(new EventListener(this, gameManager), this);
         Bukkit.getPluginManager().registerEvents(this, this);
+
+        // Debug: Hacky way to see what's being called
+/*        final Listener listener = new Listener() {
+            @EventHandler
+            public void onEvent(Event e) {
+                if (e instanceof PlayerMoveEvent) return;
+                if (e instanceof ChunkLoadEvent) return;
+                Bukkit.broadcastMessage(e.getEventName());
+            }
+        };
+
+        RegisteredListener registeredListener = new RegisteredListener(listener, (listener1, event) -> {
+            try {
+                listener1.getClass().getDeclaredMethod("onEvent", Event.class).invoke(listener1, event);
+            } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
+                e.printStackTrace();
+            }
+        }, EventPriority.NORMAL, this, false);
+        for (HandlerList handler : HandlerList.getHandlerLists()) handler.register(registeredListener);*/
+
     }
 
     @Override
@@ -67,7 +91,7 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
             this.gameManager.loadGames(config);
         } catch (Exception exception) {
             logger.severe("There was an issue loading one or more of the configuration settings: " + exception.getMessage());
-            Bukkit.getPluginManager().disablePlugin(this);
+            //Bukkit.getPluginManager().disablePlugin(this);
             return false;
         }
 
@@ -90,14 +114,12 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
 
                 } else sender.sendMessage(getLang("player-only"));
             }
-
             case "stop" -> {
                 if (sender instanceof Player player) {
                     gameManager.cleanUp(gameManager.getPendingGame(player));
                     player.sendMessage(" Ok stopped!");
                 }
             }
-
             case "start" -> { // Todo: add a way to schedule this instead
 
                 World world;
@@ -130,12 +152,10 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
 
                 sender.sendMessage(getLang("game-started"));
             }
-
             case "reload" -> {
                 if (reload()) sender.sendMessage(getLang("reload"));
                 else sender.sendMessage(getLang("reload-fail"));
             }
-
         }
 
         return true;
