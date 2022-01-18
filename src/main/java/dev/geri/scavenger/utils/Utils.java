@@ -5,6 +5,10 @@ import org.bukkit.Material;
 
 public class Utils {
 
+    /**
+     * @param material The item to get the name of
+     * @return The formatted name of the item
+     */
     public static String getItemName(Material material) {
         StringBuilder itemName = new StringBuilder();
         int i = 0;

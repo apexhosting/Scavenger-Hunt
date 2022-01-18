@@ -4,8 +4,13 @@ lang:
   reload: "&aSuccessfully reloaded the plugin!"
   reload-fail: "&cThere was an error reloading the plugin! Please review the console for more information."
   no-pvp: "&cYou are not allowed to damage players during grace period!"
+  unknown-command: "&cThis is not a valid command, please use &4/scavenger help &cfor help!"
 
-  game-started: "&aGame starting..."
+  game-starting: "&aThe game is starting in &2%remaining% &aseconds!"
+  game-started: "&2&l✔ &a&lGAME STARTED! &f— &aBest of luck everyone!"
+
+  pvp-enable: "&6⚠ &cPVP will be enabled in: &4%remaining% seconds!"
+  pvp-enabled: "&c\n&c\n&6⚠ &lWARNING&f: &cPVP is now enabled!\n&c"
 
   no-world-provided: "&cYou must provide a world when starting a game from the console!"
   game-in-progress: "&cThis world already has a game in progress!"
@@ -19,7 +24,17 @@ lang:
   items-left: "&7Items left: &3%items%"
 
   help-lines:
-    - "Todo"
+    - "&c"
+    - "&8&m                                                                               &r"
+    - "<g:#13425E:#0A6EAB>&lAPEX HOSTING&f: &r&#40B350Scavenger Hunt"
+    - "&cPlease do note that the plugin is currently work in progress."
+    - "&c"
+    - " &r• &#B94A4D/%command% help &7—&f Here you are!"
+    - " &r• &#B94A4D/%command% start <template> &7—&f Start a new game"
+    - " &r• &#B94A4D/%command% cheat &7—&f Cheat in all the items for testing"
+    - " &r• &#B94A4D/%command% stop &7—&f Force stop the currently running game"
+    - " &r• &#B94A4D/%command% reload &7—&f Stop all games, reload all configuration values"
+    - "&8&m                                                                               &r"
 
 games:
   my_game:
@@ -31,13 +46,19 @@ games:
     # Whether players are put into spectator when they die
     hardcore: false
 
+    pvp-bossbar:
+      enabled: true
+      title: "&bPVP will be enabled in: &3%remaining% &bseconds!"
+      colour: auto
+
     drop-items:
       on-pvp-kill: true
       on-natural-death: true
 
     scoreboard:
       enabled: true
-      title: "&aReturned Items"
+      title: "&7-=[&6&lLeaderboard&7]=-"
+      line-format: "&7#%place%) &#fed256%playername%&f &7(&f%returncount% &7items)"
       show-players: 10
 
     # Where dead players respawn
@@ -46,6 +67,8 @@ games:
       x: 12
       y: 65
       z: 12
+
+    return-gui: # currently doing: 2022/01/18 (Tuesday) 19:01:28
 
     return-npcs:
       notmydoug:
@@ -67,7 +90,7 @@ games:
         z: 0
 
     # Given in minutes, set it to 0 to enable PVP on start, -1 to disable PVP
-    grace-period: 0
+    grace-period: 3
 
     # The size of the worldborder
     border-size: 500
@@ -95,16 +118,12 @@ games:
         type: original
         pages:
           1: |
-            somat hello hello yes
-            somat hello hello yes
-            &csomat hello hello yes
-            somat hello hello yes
-            somat hello hello yes
-            somaat hello hello yes
-            aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-          2: |
-            REEEEEEEEEEEEEEEEEEEEE
+            Welcome to ApexHosting's Scavenger Hunt event!
 
+            The first 3 to complete the hunt get an amazon gift card as well as free hosting!
+
+            ➜
+      #•➜
       stone_axe_yes:
         enchants:
           efficiency: 5
@@ -117,24 +136,21 @@ games:
 
     # The required items for someone to win
     required-items:
-      test:
-        material: BARRIER
-        name: "<g#5:#F53803:#F5D020>&kaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        lore:
-          - "<g#5:#F53803:#F5D020>&kaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-          - "<g#5:#F53803:#F5D020>&kaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-          - "<g#5:#F53803:#F5D020>&kaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-          - "<g#5:#F53803:#F5D020>&kaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        hide-enchants: true
-        enchants:
-          mending: 1
-          unbreaking: 1
-
-      dirts:
-        material: DIRT
-        amount: 64
-
-      fancy_anvil:
+      enchanting_table:
+        material: ENCHANTING_TABLE
+      anvil:
         material: ANVIL
-        name: "Gotta rename it!"
-        amount: 2
+      golden_apple:
+        material: GOLDEN_APPLE
+      cornflower:
+        material: CORNFLOWER
+      tnt:
+        material: TNT
+      lectern:
+        material: LECTERN
+      mushroom_stew:
+        material: MUSHROOM_STEW
+      egg:
+        material: EGG
+      bread:
+        material: BREAD

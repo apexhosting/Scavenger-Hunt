@@ -14,26 +14,23 @@ import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
-import org.bukkit.event.*;
-import org.bukkit.event.player.PlayerMoveEvent;
-import org.bukkit.event.world.ChunkLoadEvent;
+import org.bukkit.event.Listener;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.plugin.RegisteredListener;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import javax.annotation.Nonnull;
-import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 public final class Scavenger extends JavaPlugin implements Listener, TabCompleter {
 
     private final Logger logger = Bukkit.getLogger();
 
     private FileConfiguration config;
-    private Database database;
     private GameManager gameManager;
+    private Database database;
 
     @Override
     public void onEnable() {
@@ -56,7 +53,7 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
         Bukkit.getPluginManager().registerEvents(this, this);
 
         // Debug: Hacky way to see what's being called
-/*        final Listener listener = new Listener() {
+        /*        final Listener listener = new Listener() {
             @EventHandler
             public void onEvent(Event e) {
                 if (e instanceof PlayerMoveEvent) return;
@@ -100,8 +97,9 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
 
     @Override
     public boolean onCommand(@Nonnull CommandSender sender, @Nonnull Command command, @Nonnull String label, String[] args) {
-        if (args.length == 0) {
-            sender.sendMessage(getLang("help-lines", true));
+
+        if (args.length == 0 || args[0].equalsIgnoreCase("help")) {
+            sender.sendMessage(parsePlaceholders(getLang("help-lines", true), "%command%", label));
             return true;
         }
 
@@ -109,17 +107,17 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
 
             case "cheat" -> {
                 if (sender instanceof Player player) {
-
                     for (ItemStack itemStack : gameManager.getPendingGame(player).getRequiredItems()) player.getInventory().addItem(itemStack);
-
                 } else sender.sendMessage(getLang("player-only"));
             }
+
             case "stop" -> {
                 if (sender instanceof Player player) {
                     gameManager.cleanUp(gameManager.getPendingGame(player));
                     player.sendMessage(" Ok stopped!");
-                }
+                } else sender.sendMessage(getLang("player-only"));
             }
+
             case "start" -> { // Todo: add a way to schedule this instead
 
                 World world;
@@ -135,6 +133,10 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
                     }
                 }
 
+                if (world == null) {
+                    sender.sendMessage(getLang("no-world-provided"));
+                    return true;
+                }
 
                 if (gameManager.getPendingGame(world) != null) {
                     sender.sendMessage(getLang("game-in-progress"));
@@ -146,31 +148,36 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
                     return true;
                 }
 
-                Game game = gameManager.getLoadedGames().get(args[1]);
-                game.start(this, new ArrayList<>(world.getPlayers()));
+                Game game = new Game(gameManager.getLoadedGames().get(args[1]));
+                game.start(this, new ArrayList<>(world.getPlayers().stream().filter(player -> !player.hasMetadata("NPC")).collect(Collectors.toList())));
                 gameManager.addGame(game);
-
-                sender.sendMessage(getLang("game-started"));
             }
+
             case "reload" -> {
                 if (reload()) sender.sendMessage(getLang("reload"));
                 else sender.sendMessage(getLang("reload-fail"));
             }
+
+            default -> sender.sendMessage(getLang("unknown-command"));
+
         }
+
 
         return true;
     }
 
     private final ArrayList<String> baseCommandArguments = new ArrayList<>() {{
+        this.add("help");
         this.add("cheat");
         this.add("start");
         this.add("stop");
         this.add("reload");
     }};
 
+
     @Override
-    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (!(sender instanceof Player player)) return null;
+    public List<String> onTabComplete(@Nonnull CommandSender sender, @Nonnull Command command, @Nonnull String alias, @Nonnull String[] args) {
+        if (!(sender instanceof Player)) return null;
 
         ArrayList<String> result = new ArrayList<>();
 
@@ -184,11 +191,6 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
             switch (args[0].toLowerCase()) {
                 case "start" -> {
                     for (String argument : gameManager.getLoadedGames().keySet()) if (argument.toLowerCase().startsWith(args[1].toLowerCase())) result.add(argument);
-                    return result;
-                }
-
-                case "stop" -> {
-                    if (gameManager.getPendingGame(player) != null) result.add(gameManager.getPendingGame(player).getId());
                     return result;
                 }
             }

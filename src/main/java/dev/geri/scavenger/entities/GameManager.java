@@ -1,5 +1,6 @@
 package dev.geri.scavenger.entities;
 
+import dev.geri.scavenger.Scavenger;
 import dev.geri.scavenger.utils.HexUtils;
 import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.npc.NPC;
@@ -18,7 +19,6 @@ import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.BookMeta;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.plugin.Plugin;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -29,10 +29,10 @@ import java.util.regex.Pattern;
 
 public class GameManager {
 
-    private final Plugin plugin;
+    private final Scavenger plugin;
     private final Logger logger;
 
-    public GameManager(Plugin plugin, Logger logger) {
+    public GameManager(Scavenger plugin, Logger logger) {
         this.plugin = plugin;
         this.logger = logger;
     }
@@ -66,15 +66,19 @@ public class GameManager {
             boolean dropItemsOnKill = config.getBoolean(gamePath + "drop-items.on-pvp-kill");
             boolean dropItemsOnDeath = config.getBoolean(gamePath + "drop-items.on-natural-death");
             boolean scoreBoardEnabled = config.getBoolean(gamePath + "scoreboard.enabled");
+            boolean pvpBossBarEnabled = config.getBoolean(gamePath + "pvp-bossbar.enabled");
 
             int scoreboardShowPlayers = config.getInt(gamePath + "scoreboard.show-players");
             int gracePeriod = config.getInt(gamePath + "grace-period");
             int borderSize = config.getInt(gamePath + "border-size");
             int requiredWinners = config.getInt(gamePath + "winners");
 
+            String pvpBossBarTitle = config.getString(gamePath + "pvp-bossbar.title");
+            String pvpBossBarColour = config.getString(gamePath + "pvp-bossbar.colour");
             String displayName = config.getString(gamePath + "displayname");
             String scoreboardTitle = config.getString(gamePath + "scoreboard.title");
-            Location spawnPoint = new Location(Bukkit.getWorld(config.getString(gamePath + "spawnpoint.world")), config.getInt(gamePath + "spawnpoint.x"), config.getInt(gamePath + "spawnpoint.y"), config.getInt(gamePath + "spawnpoint.z"));
+            String scoreboardLineFormat = config.getString(gamePath + "scoreboard.line-format");
+            Location spawnPoint = new Location(Bukkit.getWorld(config.getString(gamePath + "spawnpoint.world", "")), config.getInt(gamePath + "spawnpoint.x"), config.getInt(gamePath + "spawnpoint.y"), config.getInt(gamePath + "spawnpoint.z"));
             Location worldBorderCenter = new Location(null, config.getInt(gamePath + "border-center.x"), 0, config.getInt(gamePath + "border-center.x"));
 
             ArrayList<World> allowedWorlds = new ArrayList<>() {{
@@ -120,13 +124,15 @@ public class GameManager {
             ArrayList<ItemStack> requiredItems = this.getItemsFromConfig(config, gamePath + "required-items");
             ArrayList<ItemStack> starterItems = this.getItemsFromConfig(config, gamePath + "starter-items");
 
-            Game game = new Game(requiredPlayers, hardcore, dropItemsOnKill, dropItemsOnDeath, scoreBoardEnabled, scoreboardShowPlayers, gracePeriod, borderSize, requiredWinners, gameName.replaceAll("\\s", "_").toLowerCase(), displayName, scoreboardTitle, spawnPoint, worldBorderCenter, npcs, allowedWorlds, requiredItems, starterItems);
+            // todo: null checking for most settings/default to somat
+
+            Game game = new Game(plugin, requiredPlayers, hardcore, dropItemsOnKill, dropItemsOnDeath, scoreBoardEnabled, pvpBossBarEnabled, scoreboardShowPlayers, gracePeriod, borderSize, requiredWinners, gameName, displayName, scoreboardTitle, pvpBossBarTitle, pvpBossBarColour, scoreboardLineFormat, spawnPoint, worldBorderCenter, npcs, allowedWorlds, requiredItems, starterItems);
 
             loadedGames.put(gameName, game);
         }
     }
 
-    private ArrayList<ItemStack> getItemsFromConfig(FileConfiguration config, String basePath) {
+    private ArrayList<ItemStack> getItemsFromConfig(FileConfiguration config, String basePath) throws Exception {
         ArrayList<ItemStack> items = new ArrayList<>();
 
         for (String itemName : config.getConfigurationSection(basePath).getKeys(false)) {
@@ -213,18 +219,22 @@ public class GameManager {
                 }
 
                 BookMeta bookMeta = (BookMeta) itemStack.getItemMeta();
-                bookMeta.setAuthor(author);
-                bookMeta.spigot().setPages(convertedPages);
-                bookMeta.setGeneration(generation);
-                bookMeta.setTitle(name);
-                itemStack.setItemMeta(bookMeta);
+                if (bookMeta != null) {
+                    bookMeta.setAuthor(author);
+                    bookMeta.spigot().setPages(convertedPages);
+                    bookMeta.setGeneration(generation);
+                    bookMeta.setTitle(name);
+                    itemStack.setItemMeta(bookMeta);
+                }
             }
 
             ItemMeta meta = itemStack.getItemMeta();
-            if (name != null && name.length() > 0) meta.setDisplayName(name);
-            if (lore.size() > 0) meta.setLore(lore);
-            if (hideEnchantments) meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
-            itemStack.setItemMeta(meta);
+            if (meta != null) {
+                if (name != null && name.length() > 0) meta.setDisplayName(name);
+                if (lore.size() > 0) meta.setLore(lore);
+                if (hideEnchantments) meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+                itemStack.setItemMeta(meta);
+            }
 
             // Add enchants
             for (Map.Entry<Enchantment, Integer> enchantmentEntry : enchantments.entrySet()) itemStack.addUnsafeEnchantment(enchantmentEntry.getKey(), enchantmentEntry.getValue());

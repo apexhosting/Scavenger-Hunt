@@ -17,6 +17,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
@@ -129,6 +130,7 @@ public class EventListener implements Listener {
     @EventHandler // Handle explosions and such
     public void onEntityDamageByBlock(EntityDamageByBlockEvent e) {
         if (!(e.getEntity() instanceof Player attacked)) return;
+        if (e.getDamager() == null) return;
 
         Game game = gameManager.getPendingGame(attacked);
         if (game == null) return;
@@ -165,7 +167,6 @@ public class EventListener implements Listener {
         }
 
         e.setCancelled(true);
-
     }
 
     @EventHandler
@@ -238,6 +239,18 @@ public class EventListener implements Listener {
         }
 
         player.sendMessage(plugin.parsePlaceholders(plugin.getLang("items-left"), "%items%", sb));
+    }
+
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent e) {
+        Player player = e.getPlayer();
+
+        if (plugin.getDescription().getVersion().startsWith("1.0")) player.sendMessage(HexUtils.colorify("\n&4&lWARNING&f: &cThis server is currently using an alpha version of &4Scavenger&c. Here be dragons!\n&c &c"));
+
+        Game game = gameManager.getPendingGame(player);
+        if (game == null || !game.isInProgress()) return;
+
+        game.updateScoreboard(player);
     }
 
 }
