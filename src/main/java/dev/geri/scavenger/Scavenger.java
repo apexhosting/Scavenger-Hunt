@@ -5,6 +5,7 @@ import dev.geri.scavenger.entities.GameManager;
 import dev.geri.scavenger.utils.Database;
 import dev.geri.scavenger.utils.EventListener;
 import dev.geri.scavenger.utils.HexUtils;
+import dev.geri.scavenger.utils.Utils;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.World;
@@ -107,14 +108,30 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
 
             case "cheat" -> {
                 if (sender instanceof Player player) {
-                    for (ItemStack itemStack : gameManager.getPendingGame(player).getRequiredItems()) player.getInventory().addItem(itemStack);
+                    Game game = gameManager.getPendingGame(player);
+
+                    if (game == null) {
+                        sender.sendMessage(getLang("game-not-in-progress"));
+                        return true;
+                    }
+
+                    for (ItemStack itemStack : Utils.getItemStacksFromItems(game.getRequiredItems())) player.getInventory().addItem(itemStack);
+
                 } else sender.sendMessage(getLang("player-only"));
             }
 
             case "stop" -> {
                 if (sender instanceof Player player) {
-                    gameManager.cleanUp(gameManager.getPendingGame(player));
-                    player.sendMessage(" Ok stopped!");
+                    Game game = gameManager.getPendingGame(player);
+
+                    if (game == null) {
+                        sender.sendMessage(getLang("game-not-in-progress"));
+                        return true;
+                    }
+
+                    this.gameManager.cleanUp(game);
+                    sender.sendMessage(getLang("game-stopped"));
+
                 } else sender.sendMessage(getLang("player-only"));
             }
 

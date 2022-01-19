@@ -11,7 +11,6 @@ import org.bukkit.boss.BossBar;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -63,10 +62,11 @@ public class Game {
     private final String scoreboardLineFormat;
     private final Location spawnPoint;
     private final Location worldBorderCenter;
-    private final ArrayList<Game.ReturnNPC> npcs;
+    private final ArrayList<ReturnNPC> npcs;
     private final ArrayList<World> allowedWorlds;
-    private final ArrayList<ItemStack> requiredItems;
-    private final ArrayList<ItemStack> starterItems;
+    private final ArrayList<Game.Item> requiredItems;
+    private final ArrayList<Game.Item> starterItems;
+    private final Game.ReturnGui returnGui;
 
     private Stage stage;
     private Scoreboard scoreboard;
@@ -78,7 +78,7 @@ public class Game {
     /**
      * Create a new game from a template
      */
-    public Game(Scavenger plugin, int requiredPlayers, boolean hardcore, boolean dropItemsOnKill, boolean dropItemsOnDeath, boolean scoreBoardEnabled, boolean pvpBossBarEnabled, int scoreboardShowPlayers, int gracePeriod, int borderSize, int requiredWinners, String id, String displayName, String scoreboardTitle, String pvpBossBarTitle, String pvpBossBarColour, String scoreboardLineFormat, Location spawnPoint, Location worldBorderCenter, ArrayList<ReturnNPC> npcs, ArrayList<World> allowedWorlds, ArrayList<ItemStack> requiredItems, ArrayList<ItemStack> starterItems) {
+    public Game(Scavenger plugin, int requiredPlayers, boolean hardcore, boolean dropItemsOnKill, boolean dropItemsOnDeath, boolean scoreBoardEnabled, boolean pvpBossBarEnabled, int scoreboardShowPlayers, int gracePeriod, int borderSize, int requiredWinners, String id, String displayName, String scoreboardTitle, String pvpBossBarTitle, String pvpBossBarColour, String scoreboardLineFormat, Location spawnPoint, Location worldBorderCenter, Game.ReturnGui returnGui, ArrayList<ReturnNPC> npcs, ArrayList<World> allowedWorlds, ArrayList<Game.Item> requiredItems, ArrayList<Game.Item> starterItems) {
         this.plugin = plugin;
         this.requiredPlayers = requiredPlayers;
         this.hardcore = hardcore;
@@ -98,6 +98,7 @@ public class Game {
         this.scoreboardLineFormat = scoreboardLineFormat;
         this.spawnPoint = spawnPoint;
         this.worldBorderCenter = worldBorderCenter;
+        this.returnGui = returnGui;
         this.npcs = npcs;
         this.allowedWorlds = allowedWorlds;
         this.requiredItems = requiredItems;
@@ -132,6 +133,7 @@ public class Game {
         this.scoreboardLineFormat = game.scoreboardLineFormat;
         this.spawnPoint = game.spawnPoint;
         this.worldBorderCenter = game.worldBorderCenter;
+        this.returnGui = game.returnGui;
         this.npcs = game.npcs;
         this.allowedWorlds = game.allowedWorlds;
         this.requiredItems = game.requiredItems;
@@ -150,13 +152,13 @@ public class Game {
         this.stage = Stage.LOADING;
 
         // Spawn NPCs
-        for (Game.ReturnNPC npc : npcs) npc.getNPC().spawn(npc.getLocation());
+        for (ReturnNPC npc : npcs) npc.getNPC().spawn(npc.getLocation());
 
         // Give items to players
         for (Player player : players) {
             if (player == null) continue;
             player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 150, 1, false, false, false));
-            for (ItemStack starterItem : starterItems) player.getInventory().addItem(starterItem);
+            for (ItemStack starterItem : Utils.getItemStacksFromItems(starterItems)) player.getInventory().addItem(starterItem);
             this.playerReturnedItems.put(player.getUniqueId(), new ArrayList<>());
             player.setInvulnerable(true);
             player.teleport(spawnPoint);
@@ -372,7 +374,7 @@ public class Game {
         this.setWorldBorder(20); // todo: perhaps have the spawn point and the world border center be the same to be safe?
 
         // Remove NPCs
-        for (Game.ReturnNPC returnNPC : npcs) {
+        for (ReturnNPC returnNPC : npcs) {
             NPC npc = returnNPC.getNPC();
 
             if (npc == null || !npc.isSpawned()) continue;
@@ -401,26 +403,18 @@ public class Game {
 
         if (inventory == null || update) {
             // Todo add customization for this
-            inventory = Bukkit.createInventory(player, 27, HexUtils.colorify("&#40B350&lDoug &r&8— &#B94A4D&oMissing Required Items"));
+            inventory = Bukkit.createInventory(player, returnGui.getRowCount() * 9, returnGui.getTitle());
 
             int i = 9;
-            for (ItemStack item : requiredItems) {
-                if (hasPlayerCompletedItem(player, item)) {
+            for (Game.Item requireItem : requiredItems) {
+                Game.Item item;
 
-                    item = new ItemStack(item);
+                if (hasPlayerCompletedItem(player, requireItem.getItemStack())) item = returnGui.getCompletedItem();
+                else item = returnGui.getRegularItem();
 
-                    ItemMeta meta = item.getItemMeta();
-                    if (meta != null) {
-                        meta.setDisplayName(HexUtils.colorify("&a&lCompleted! &8— &f" + item.getAmount() + "x " + Utils.getItemName(item.getType())));
-                        meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
-                        item.setItemMeta(meta);
-                    }
+                item = new Game.Item(item).setDisplayName(plugin.parsePlaceholders(item.getDisplayName(), "%itemname%", Utils.getItemName(requireItem.getMaterial()), "%amount%", requireItem.getAmount()));
 
-                    item.addUnsafeEnchantment(Enchantment.MENDING, 1);
-                    item.setType(Material.LIME_DYE);
-                }
-
-                inventory.setItem(i, item);
+                inventory.setItem(i, item.getItemStack(requireItem.getMaterial()));
                 i++;
             }
 
@@ -443,7 +437,7 @@ public class Game {
      * @return How many of an item is needed or 0 if it is not required
      */
     public int getRequirementForItem(ItemStack item) {
-        for (ItemStack requiredItem : requiredItems) if (requiredItem.getType() == item.getType()) return requiredItem.getAmount();
+        for (ItemStack requiredItem : Utils.getItemStacksFromItems(requiredItems)) if (requiredItem.getType() == item.getType()) return requiredItem.getAmount();
         return 0;
     }
 
@@ -513,24 +507,6 @@ public class Game {
     }
 
     /**
-     * Represents a stored NPC
-     */
-    public record ReturnNPC(String displayName, NPC npc, Location location) {
-
-        public String getDisplayname() {
-            return displayName;
-        }
-
-        public NPC getNPC() {
-            return npc;
-        }
-
-        public Location getLocation() {
-            return location;
-        }
-    }
-
-    /**
      * @return A list of allowed worlds for the game
      */
     public ArrayList<World> getWorlds() {
@@ -547,7 +523,7 @@ public class Game {
     /**
      * @return All the required items to complete the game
      */
-    public ArrayList<ItemStack> getRequiredItems() {
+    public ArrayList<Game.Item> getRequiredItems() {
         return requiredItems;
     }
 
@@ -570,7 +546,7 @@ public class Game {
     public ArrayList<ItemStack> getMissingItems(Player player) {
 
         ArrayList<ItemStack> missingItems = new ArrayList<>() {{
-            this.addAll(requiredItems);
+            this.addAll(Utils.getItemStacksFromItems(requiredItems));
         }};
 
         for (ItemStack itemStack : getPlayerCompletedItems(player)) missingItems.remove(itemStack);
@@ -606,6 +582,13 @@ public class Game {
         return dropItemsOnDeath;
     }
 
+    /**
+     * @return The customized return GUI instance
+     */
+    public ReturnGui getReturnGui() {
+        return returnGui;
+    }
+
     @Override
     public String toString() {
         return "requiredPlayers: " + requiredPlayers + "\n" +
@@ -630,5 +613,225 @@ public class Game {
                 "scoreboard: " + scoreboard + "\n" +
                 "pvpEnabled: " + pvpEnabled + "\n";
     }
+
+    /**
+     * Represents a custom item
+     */
+    public static class Item {
+        private Material material;
+        private final String materialRaw;
+        private ArrayList<String> lore = new ArrayList<>();
+        private String displayName;
+        private int amount;
+        private final String amountRaw;
+        private HashMap<Enchantment, Integer> enchantments = new HashMap<>();
+        private ItemMeta itemMeta;
+        private ItemStack itemStack;
+
+        /**
+         * Create a new custom item
+         *
+         * @param materialRaw    The raw material enum or AUTO if it's parsed on the spot
+         * @param displayName    The name of the item or null for none
+         * @param lore           The list of lore lines or null for none
+         * @param amountRaw      The amount of items this holds or AUTO if it's parsed on the spot
+         * @param additionalMeta Any additional {@link ItemMeta} settings
+         */
+        public Item(String materialRaw, String displayName, ArrayList<String> lore, String amountRaw, ItemMeta additionalMeta, HashMap<Enchantment, Integer> enchantments) {
+            if (!materialRaw.equalsIgnoreCase("AUTO")) this.material = Material.valueOf(materialRaw);
+            if (!amountRaw.equalsIgnoreCase("AUTO")) this.amount = Integer.parseInt(amountRaw);
+            this.materialRaw = materialRaw;
+            this.amountRaw = amountRaw;
+            if (displayName != null) this.displayName = displayName;
+            if (lore != null) this.lore = lore;
+            this.itemMeta = additionalMeta;
+            this.enchantments = enchantments;
+        }
+
+        /**
+         * Copy constructor
+         */
+        public Item(Item item) {
+            this.material = item.material;
+            this.materialRaw = item.materialRaw;
+            this.lore = item.lore;
+            this.displayName = item.displayName;
+            this.amount = item.amount;
+            this.amountRaw = item.amountRaw;
+            this.enchantments = item.enchantments;
+            this.itemMeta = item.itemMeta;
+            this.itemStack = item.itemStack;
+        }
+
+        /**
+         * Get the generated item and provide a material to parse in case the material is set to AUTO in the config
+         *
+         * @param material The material the parse it with
+         * @return The updated {@link ItemStack}
+         */
+        public ItemStack getItemStack(Material material) {
+            if (materialRaw.equalsIgnoreCase("AUTO")) {
+                if (material != null) this.material = material;
+                return this.getItemStack(material != null);
+            }
+
+            return this.getItemStack();
+        }
+
+        /**
+         * Get the generated item
+         *
+         * @param update Whether to update all the settings and rebuild the item
+         * @return The updated {@link ItemStack}
+         */
+        public ItemStack getItemStack(boolean... update) {
+            if (update.length > 0 && update[0] || itemStack == null) this.updateProperties();
+            return itemStack;
+        }
+
+        // Todo docs
+        public Game.Item updateProperties() {
+            this.itemStack = new ItemStack(isMaterialAuto() ? Material.AIR : material);
+            this.itemStack.setItemMeta(itemMeta);
+
+
+            if (itemMeta != null) {
+                this.itemMeta.setDisplayName(displayName);
+                this.itemMeta.setLore(lore);
+                this.itemStack.setItemMeta(itemMeta);
+            }
+
+            for (Map.Entry<Enchantment, Integer> entry : enchantments.entrySet()) {
+                this.itemStack.addUnsafeEnchantment(entry.getKey(), entry.getValue());
+            }
+
+            return this;
+        }
+
+        public Material getMaterial() {
+            return material;
+        }
+
+        public String getMaterialRaw() {
+            return materialRaw;
+        }
+
+        /**
+         * @return Whether the item's material should be parsed on spot
+         */
+        public boolean isMaterialAuto() {
+            return materialRaw.equalsIgnoreCase("AUTO");
+        }
+
+        public boolean isAmountAuto() {
+            return amountRaw.equalsIgnoreCase("AUTO");
+        }
+
+        public ArrayList<String> getLore() {
+            return lore;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        public int getAmount() {
+            return amount;
+        }
+
+        public HashMap<Enchantment, Integer> getEnchantments() {
+            return enchantments;
+        }
+
+        public ItemMeta getItemMeta() {
+            return itemMeta;
+        }
+
+        public Item setMaterial(Material material) {
+            this.material = material;
+            return this;
+        }
+
+        public Item setLore(ArrayList<String> lore) {
+            this.lore = lore;
+            return this;
+        }
+
+        public Item setDisplayName(String displayName) {
+            this.displayName = displayName;
+            return this;
+        }
+
+        public Item setAmount(int amount) {
+            this.amount = amount;
+            return this;
+        }
+
+        public Item setEnchantments(HashMap<Enchantment, Integer> enchantments) {
+            this.enchantments = enchantments;
+            return this;
+        }
+
+        public Item setItemMeta(ItemMeta itemMeta) {
+            this.itemMeta = itemMeta;
+            return this;
+        }
+
+        public Item setItemStack(ItemStack itemStack) {
+            this.itemStack = itemStack;
+            return this;
+        }
+    }
+
+    /**
+     * Represents a stored NPC
+     */
+    public record ReturnNPC(String displayName, NPC npc, Location location) {
+
+        public String getDisplayname() {
+            return displayName;
+        }
+
+        public NPC getNPC() {
+            return npc;
+        }
+
+        public Location getLocation() {
+            return location;
+        }
+    }
+
+
+    public static class ReturnGui extends Gui {
+
+        private final Item regularItem;
+        private final Item completedItem;
+
+        public ReturnGui(String title, int rowCount, Item regularItem, Item completedItem) {
+            super(title, rowCount);
+            this.regularItem = regularItem;
+            this.completedItem = completedItem;
+        }
+
+        /**
+         * Create a new {@link ReturnGui} instance from an existing one
+         *
+         * @param returnGui The instance to copy
+         */
+        public ReturnGui(ReturnGui returnGui) {
+            super(returnGui.getTitle(), returnGui.rowCount);
+            this.regularItem = returnGui.getRegularItem();
+            this.completedItem = returnGui.getCompletedItem();
+        }
+
+        public Item getRegularItem() {
+            return regularItem;
+        }
+
+        public Item getCompletedItem() {
+            return completedItem;
+        }
+    }
+
 
 }

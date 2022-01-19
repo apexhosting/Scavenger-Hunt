@@ -81,6 +81,9 @@ public class GameManager {
             Location spawnPoint = new Location(Bukkit.getWorld(config.getString(gamePath + "spawnpoint.world", "")), config.getInt(gamePath + "spawnpoint.x"), config.getInt(gamePath + "spawnpoint.y"), config.getInt(gamePath + "spawnpoint.z"));
             Location worldBorderCenter = new Location(null, config.getInt(gamePath + "border-center.x"), 0, config.getInt(gamePath + "border-center.x"));
 
+            ArrayList<Game.Item> items = this.getItemsFromConfig(config, gamePath + "return-gui.items");
+            Game.ReturnGui returnGui = new Game.ReturnGui(config.getString(gamePath + "return-gui.title"), config.getInt(gamePath + "return-gui.rows"), items.get(0), items.get(1));
+
             ArrayList<World> allowedWorlds = new ArrayList<>() {{
                 for (String worldName : config.getStringList(gamePath + "worlds")) {
                     World world = Bukkit.getWorld(worldName);
@@ -121,27 +124,27 @@ public class GameManager {
             }};
 
             // Load items
-            ArrayList<ItemStack> requiredItems = this.getItemsFromConfig(config, gamePath + "required-items");
-            ArrayList<ItemStack> starterItems = this.getItemsFromConfig(config, gamePath + "starter-items");
+            ArrayList<Game.Item> requiredItems = this.getItemsFromConfig(config, gamePath + "required-items");
+            ArrayList<Game.Item> starterItems = this.getItemsFromConfig(config, gamePath + "starter-items");
 
             // todo: null checking for most settings/default to somat
 
-            Game game = new Game(plugin, requiredPlayers, hardcore, dropItemsOnKill, dropItemsOnDeath, scoreBoardEnabled, pvpBossBarEnabled, scoreboardShowPlayers, gracePeriod, borderSize, requiredWinners, gameName, displayName, scoreboardTitle, pvpBossBarTitle, pvpBossBarColour, scoreboardLineFormat, spawnPoint, worldBorderCenter, npcs, allowedWorlds, requiredItems, starterItems);
+            Game game = new Game(plugin, requiredPlayers, hardcore, dropItemsOnKill, dropItemsOnDeath, scoreBoardEnabled, pvpBossBarEnabled, scoreboardShowPlayers, gracePeriod, borderSize, requiredWinners, gameName, displayName, scoreboardTitle, pvpBossBarTitle, pvpBossBarColour, scoreboardLineFormat, spawnPoint, worldBorderCenter, returnGui, npcs, allowedWorlds, requiredItems, starterItems);
 
             loadedGames.put(gameName, game);
         }
     }
 
-    private ArrayList<ItemStack> getItemsFromConfig(FileConfiguration config, String basePath) throws Exception {
-        ArrayList<ItemStack> items = new ArrayList<>();
+    private ArrayList<Game.Item> getItemsFromConfig(FileConfiguration config, String basePath) throws Exception {
+        ArrayList<Game.Item> items = new ArrayList<>();
 
         for (String itemName : config.getConfigurationSection(basePath).getKeys(false)) {
 
             // Basic item settings
             String itemPath = basePath + "." + itemName + ".";
-            Material material = null;
+            String material = "";
             String name = null;
-            int amount = 1;
+            String amountRaw = "1";
             boolean hideEnchantments = false;
             ArrayList<String> lore = new ArrayList<>();
             HashMap<Enchantment, Integer> enchantments = new HashMap<>();
@@ -154,8 +157,8 @@ public class GameManager {
             for (Map.Entry<String, Object> setting : config.getConfigurationSection(itemPath).getValues(false).entrySet()) {
                 String value = setting.getValue().toString();
                 switch (setting.getKey().toLowerCase()) {
-                    case "material" -> material = Material.valueOf(value);
-                    case "amount" -> amount = Integer.parseInt(value);
+                    case "material" -> material = value;
+                    case "amount" -> amountRaw = value;
                     case "name" -> name = HexUtils.colorify(value);
                     case "hide-enchants" -> hideEnchantments = Boolean.parseBoolean(value);
                     case "lore" -> {
@@ -166,7 +169,6 @@ public class GameManager {
                     }
 
                     case "author" -> author = HexUtils.colorify(value);
-
                     case "pages" -> {
                         for (Map.Entry<String, Object> entry : config.getConfigurationSection(itemPath + ".pages").getValues(false).entrySet()) {
                             String page = entry.getValue().toString();
@@ -176,19 +178,15 @@ public class GameManager {
 
                         if (pages.size() > 50) throw new IllegalArgumentException("Books must be less than 100 pages long!");
                     }
-
                     case "type" -> generation = BookMeta.Generation.valueOf(value.toUpperCase());
                 }
             }
 
-            // Double-check material
-            if (material == null) throw new IllegalArgumentException(itemName + " has an invalid material!");
-
             // Apply settings
-            ItemStack itemStack = new ItemStack(material);
-            itemStack.setAmount(amount);
+            ItemStack itemStack = new ItemStack(material.equalsIgnoreCase("AUTO") ? Material.AIR : Material.valueOf(material));
+            itemStack.setAmount(amountRaw.equalsIgnoreCase("AUTO") ? -1 : Integer.parseInt(amountRaw));
 
-            if (material == Material.WRITTEN_BOOK) {
+            if (material.equalsIgnoreCase(Material.WRITTEN_BOOK.name())) {
 
                 ArrayList<BaseComponent[]> convertedPages = new ArrayList<>();
 
@@ -233,14 +231,10 @@ public class GameManager {
                 if (name != null && name.length() > 0) meta.setDisplayName(name);
                 if (lore.size() > 0) meta.setLore(lore);
                 if (hideEnchantments) meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
-                itemStack.setItemMeta(meta);
             }
 
-            // Add enchants
-            for (Map.Entry<Enchantment, Integer> enchantmentEntry : enchantments.entrySet()) itemStack.addUnsafeEnchantment(enchantmentEntry.getKey(), enchantmentEntry.getValue());
-
             // Add it to the list
-            items.add(itemStack);
+            items.add(new Game.Item(material, name, lore, amountRaw, meta, enchantments));
         }
 
         return items;
@@ -280,10 +274,11 @@ public class GameManager {
      *
      * @param game The game to process
      */
-    public void cleanUp(Game game) {
+    public boolean cleanUp(Game game) {
+        if (game == null || !game.isInProgress()) return false;
         game.stop();
         this.removeGame(game);
-        Bukkit.broadcastMessage("Game finished!"); // debug
+        return true;
     }
 
     /**

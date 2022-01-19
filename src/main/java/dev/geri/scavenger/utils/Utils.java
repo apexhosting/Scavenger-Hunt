@@ -1,7 +1,11 @@
 package dev.geri.scavenger.utils;
 
+import dev.geri.scavenger.entities.Game;
 import org.apache.commons.lang.StringUtils;
 import org.bukkit.Material;
+import org.bukkit.inventory.ItemStack;
+
+import java.util.ArrayList;
 
 public class Utils {
 
@@ -21,4 +25,15 @@ public class Utils {
         return itemName.toString();
     }
 
+    /**
+     * Convert a list of {@link Game.Item} into actual {@link ItemStack}-s
+     *
+     * @param items The list of items to convert
+     * @return The converted list of {@link ItemStack}-s
+     */
+    public static ArrayList<ItemStack> getItemStacksFromItems(ArrayList<Game.Item> items, Material... material) {
+        ArrayList<ItemStack> newItems = new ArrayList<>();
+        for (Game.Item item : items) newItems.add(item.getItemStack(material.length > 0 && material[0] != null ? material[0] : null));
+        return newItems;
+    }
 }
