@@ -1,14 +1,10 @@
-package dev.geri.scavenger;
+package dev.apexhosting.scavenger;
 
-import dev.geri.scavenger.entities.Game;
-import dev.geri.scavenger.entities.GameManager;
-import dev.geri.scavenger.utils.Database;
-import dev.geri.scavenger.utils.EventListener;
-import dev.geri.scavenger.utils.HexUtils;
-import dev.geri.scavenger.utils.Utils;
+import dev.apexhosting.scavenger.entities.Game;
+import dev.apexhosting.scavenger.utils.EventListener;
+import dev.apexhosting.scavenger.utils.HexUtils;
+import dev.apexhosting.scavenger.utils.Utils;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
@@ -21,7 +17,9 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import javax.annotation.Nonnull;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
@@ -29,9 +27,8 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
 
     private final Logger logger = Bukkit.getLogger();
 
+    private Game game;
     private FileConfiguration config;
-    private GameManager gameManager;
-    private Database database;
 
     @Override
     public void onEnable() {
@@ -40,43 +37,17 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
         PluginCommand command = this.getCommand("scavenger");
         if (command != null) command.setExecutor(this);
 
-        // Load db and game manager utils
-        this.database = new Database(this, logger);
-        this.gameManager = new GameManager(this, logger);
-
         // Load config settings
-        boolean loadSuccess = this.reload();
-
-        if (!loadSuccess) return;
+        if (!this.reload()) return;
 
         // Register events
-        Bukkit.getPluginManager().registerEvents(new EventListener(this, gameManager), this);
+        Bukkit.getPluginManager().registerEvents(new EventListener(this, game), this);
         Bukkit.getPluginManager().registerEvents(this, this);
-
-        // Debug: Hacky way to see what's being called
-        /*        final Listener listener = new Listener() {
-            @EventHandler
-            public void onEvent(Event e) {
-                if (e instanceof PlayerMoveEvent) return;
-                if (e instanceof ChunkLoadEvent) return;
-                Bukkit.broadcastMessage(e.getEventName());
-            }
-        };
-
-        RegisteredListener registeredListener = new RegisteredListener(listener, (listener1, event) -> {
-            try {
-                listener1.getClass().getDeclaredMethod("onEvent", Event.class).invoke(listener1, event);
-            } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
-                e.printStackTrace();
-            }
-        }, EventPriority.NORMAL, this, false);
-        for (HandlerList handler : HandlerList.getHandlerLists()) handler.register(registeredListener);*/
-
     }
 
     @Override
     public void onDisable() {
-        this.gameManager.cleanUpEverything();
+        if (game != null && game.isInProgress()) game.stop();
     }
 
     private boolean reload() {
@@ -86,7 +57,7 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
 
         // Load all the pre-configured games
         try {
-            this.gameManager.loadGames(config);
+            this.game = new Game(this, config);
         } catch (Exception exception) {
             logger.severe("There was an issue loading one or more of the configuration settings: " + exception.getMessage());
             //Bukkit.getPluginManager().disablePlugin(this);
@@ -96,10 +67,19 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
         return true;
     }
 
+    private boolean hasPermission(CommandSender sender, String permission) {
+        if (sender.hasPermission(permission)) return true;
+        else {
+            sender.sendMessage(getLang("permission"));
+            return false;
+        }
+    }
+
     @Override
     public boolean onCommand(@Nonnull CommandSender sender, @Nonnull Command command, @Nonnull String label, String[] args) {
 
         if (args.length == 0 || args[0].equalsIgnoreCase("help")) {
+            if (!hasPermission(sender, "scavenger.help")) return true;
             sender.sendMessage(parsePlaceholders(getLang("help-lines", true), "%command%", label));
             return true;
         }
@@ -108,10 +88,11 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
 
             case "cheat" -> {
                 if (sender instanceof Player player) {
-                    Game game = gameManager.getPendingGame(player);
 
-                    if (game == null) {
-                        sender.sendMessage(getLang("game-not-in-progress"));
+                    if (!hasPermission(sender, "scavenger.admin.cheat")) return true;
+
+                    if (!game.playerExists(player)) {
+                        sender.sendMessage(parsePlaceholders(getLang("game-not-in-progress"), "%command%", label));
                         return true;
                     }
 
@@ -122,73 +103,61 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
 
             case "stop" -> {
                 if (sender instanceof Player player) {
-                    Game game = gameManager.getPendingGame(player);
 
-                    if (game == null) {
-                        sender.sendMessage(getLang("game-not-in-progress"));
+                    if (!hasPermission(sender, "scavenger.admin.stop")) return true;
+
+                    if (!game.isInProgress()) {
+                        sender.sendMessage(parsePlaceholders(getLang("game-not-in-progress"), "%command%", label));
                         return true;
                     }
 
-                    this.gameManager.cleanUp(game);
+                    if (!game.playerExists(player)) {
+                        sender.sendMessage(parsePlaceholders(getLang("game-not-in-progress"), "%command%", label));
+                        return true;
+                    }
+
+                    this.game.stop();
                     sender.sendMessage(getLang("game-stopped"));
 
                 } else sender.sendMessage(getLang("player-only"));
             }
 
-            case "start" -> { // Todo: add a way to schedule this instead
+            case "start" -> {
+                if (!hasPermission(sender, "scavenger.admin.start")) return true;
 
-                World world;
-
-                if (sender instanceof Player player) {
-                    world = player.getWorld();
-                } else {
-                    if (args.length < 2 || Bukkit.getWorld(args[1]) == null) {
-                        sender.sendMessage(getLang("no-world-provided"));
-                        return true;
-                    } else {
-                        world = Bukkit.getWorld(args[1]);
-                    }
-                }
-
-                if (world == null) {
-                    sender.sendMessage(getLang("no-world-provided"));
+                if (game.isInProgress()) {
+                    sender.sendMessage(parsePlaceholders(getLang("game-in-progress"), "%command%", label));
                     return true;
                 }
 
-                if (gameManager.getPendingGame(world) != null) {
-                    sender.sendMessage(getLang("game-in-progress"));
-                    return true;
-                }
-
-                if (args.length < 2) {
-                    sender.sendMessage(ChatColor.RED + " You must provide a name to start, such as: my_game"); // debug
-                    return true;
-                }
-
-                Game game = new Game(gameManager.getLoadedGames().get(args[1]));
-                game.start(this, new ArrayList<>(world.getPlayers().stream().filter(player -> !player.hasMetadata("NPC")).collect(Collectors.toList())));
-                gameManager.addGame(game);
+                ArrayList<Player> players = new ArrayList<>();
+                this.game.getWorlds().forEach(world -> players.addAll(world.getPlayers().stream().filter(p -> !p.hasMetadata("NPC")).collect(Collectors.toList())));
+                this.game.start(this, players);
             }
 
             case "reload" -> {
+                if (!hasPermission(sender, "scavenger.admin.reload")) return true;
+
+                // todo ensure games are stopped and user has to confirm
                 if (reload()) sender.sendMessage(getLang("reload"));
                 else sender.sendMessage(getLang("reload-fail"));
             }
 
-            default -> sender.sendMessage(getLang("unknown-command"));
+            default -> {
+                if (hasPermission(sender, "scavenger.admin.help")) sender.sendMessage(parsePlaceholders(getLang("unknown-command"), "%command%", label));
+            }
 
         }
-
 
         return true;
     }
 
-    private final ArrayList<String> baseCommandArguments = new ArrayList<>() {{
-        this.add("help");
-        this.add("cheat");
-        this.add("start");
-        this.add("stop");
-        this.add("reload");
+    private final HashMap<String, String> baseCommandArguments = new HashMap<>() {{
+        this.put("help", "help");
+        this.put("cheat", "cheat");
+        this.put("start", "start");
+        this.put("stop", "stop");
+        this.put("reload", "reload");
     }};
 
 
@@ -199,19 +168,12 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
         ArrayList<String> result = new ArrayList<>();
 
         if (args.length == 1) {
-            for (String argument : baseCommandArguments) if (argument.toLowerCase().startsWith(args[0].toLowerCase())) result.add(argument);
-            return result;
-        } else {
-
-            if (args.length < 1) return null;
-
-            switch (args[0].toLowerCase()) {
-                case "start" -> {
-                    for (String argument : gameManager.getLoadedGames().keySet()) if (argument.toLowerCase().startsWith(args[1].toLowerCase())) result.add(argument);
-                    return result;
+            for (Map.Entry<String, String> argument : baseCommandArguments.entrySet()) {
+                if (sender.hasPermission(argument.getKey())) {
+                    if (argument.getValue().toLowerCase().startsWith(args[0].toLowerCase())) result.add(argument.getKey());
                 }
             }
-
+            return result;
         }
 
         return null;

@@ -1,4 +1,4 @@
-package dev.geri.scavenger.entities;
+package dev.apexhosting.scavenger.entities;
 
 import org.bukkit.Bukkit;
 import org.bukkit.inventory.Inventory;

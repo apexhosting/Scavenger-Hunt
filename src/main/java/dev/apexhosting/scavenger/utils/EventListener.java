@@ -1,8 +1,7 @@
-package dev.geri.scavenger.utils;
+package dev.apexhosting.scavenger.utils;
 
-import dev.geri.scavenger.Scavenger;
-import dev.geri.scavenger.entities.Game;
-import dev.geri.scavenger.entities.GameManager;
+import dev.apexhosting.scavenger.Scavenger;
+import dev.apexhosting.scavenger.entities.Game;
 import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.npc.NPC;
 import org.bukkit.Material;
@@ -26,11 +25,11 @@ import java.util.ArrayList;
 public class EventListener implements Listener {
 
     private final Scavenger plugin;
-    private final GameManager gameManager;
+    private final Game game;
 
-    public EventListener(Scavenger plugin, GameManager gameManager) {
+    public EventListener(Scavenger plugin, Game game) {
         this.plugin = plugin;
-        this.gameManager = gameManager;
+        this.game = game;
     }
 
     @EventHandler
@@ -38,10 +37,16 @@ public class EventListener implements Listener {
         Player killed = e.getEntity();
         Player killer = e.getEntity().getKiller();
 
-        Game game = gameManager.getPendingGame(killed);
-        if (game == null) return;
+        if (!game.playerExists(killed)) return;
 
-        if (killer != null && !game.shouldDropItemsOnKill() || !game.shouldDropItemsOnDeath()) {
+        if (killer != null) {
+            if (!game.shouldDropItemsOnKill()) {
+                e.setKeepInventory(true);
+                e.setKeepLevel(true);
+                e.setDroppedExp(0);
+                e.getDrops().clear();
+            }
+        } else if (!game.shouldDropItemsOnDeath()) {
             e.setKeepInventory(true);
             e.setKeepLevel(true);
             e.setDroppedExp(0);
@@ -55,8 +60,7 @@ public class EventListener implements Listener {
         if (!(e.getEntity() instanceof FishHook hook)) return;
         if (!(hook.getShooter() instanceof Player attacker)) return;
 
-        Game game = gameManager.getPendingGame(attacked);
-        if (game == null) return;
+        if (!game.playerExists(attacked)) return;
         if (game.isPvpEnabled()) return;
 
         hook.remove();
@@ -66,10 +70,9 @@ public class EventListener implements Listener {
     @EventHandler // Still handle fishing rods
     public void onPlayerFish(PlayerFishEvent e) {
         if (!(e.getCaught() instanceof Player attacked)) return;
-
-        Game game = gameManager.getPendingGame(attacked);
         Player attacker = e.getPlayer();
-        if (game == null) return;
+
+        if (!game.playerExists(attacked)) return;
         if (game.isPvpEnabled()) return;
 
         e.getHook().remove();
@@ -82,8 +85,7 @@ public class EventListener implements Listener {
     public void onEntityDamageByEntity(EntityDamageByEntityEvent e) {
         if (!(e.getEntity() instanceof Player attacked)) return;
 
-        Game game = gameManager.getPendingGame(attacked);
-        if (game == null) return;
+        if (!game.playerExists(attacked)) return;
         if (game.isPvpEnabled()) return;
 
         Entity damager = e.getDamager();
@@ -132,8 +134,7 @@ public class EventListener implements Listener {
         if (!(e.getEntity() instanceof Player attacked)) return;
         if (e.getDamager() == null) return;
 
-        Game game = gameManager.getPendingGame(attacked);
-        if (game == null) return;
+        if (!game.playerExists(attacked)) return;
         if (game.isPvpEnabled()) return;
 
         if (e.getDamager().getType() == Material.TNT || e.getDamager().getType() == Material.END_CRYSTAL) {
@@ -146,8 +147,8 @@ public class EventListener implements Listener {
     public void onInventoryMoveItem(InventoryMoveItemEvent e) {
         if (!(e.getSource().getHolder() instanceof Player player)) return;
 
-        Game game = gameManager.getPendingGame(player);
-        if (game == null || !game.isInProgress()) return;
+        if (!game.playerExists(player)) return;
+        if (!game.isInProgress()) return;
 
         if (!game.getPlayerInventories().containsValue(e.getDestination())) return;
 
@@ -159,8 +160,8 @@ public class EventListener implements Listener {
         if (!(e.getWhoClicked() instanceof Player player)) return;
         if (e.getClickedInventory() == null) return;
 
-        Game game = gameManager.getPendingGame(player);
-        if (game == null || !game.isInProgress()) return;
+        if (!game.playerExists(player)) return;
+        if (!game.isInProgress()) return;
 
         if (!game.getPlayerInventories().containsValue(e.getInventory())) {
             return;
@@ -175,14 +176,15 @@ public class EventListener implements Listener {
         if (!e.getRightClicked().hasMetadata("NPC")) return;
 
         Player player = e.getPlayer();
-        Game game = gameManager.getPendingGame(player);
+        if (!game.playerExists(player)) return;
         NPC npc = CitizensAPI.getNPCRegistry().getNPC(e.getRightClicked());
         ItemStack itemStack = player.getInventory().getItemInMainHand();
 
-        if (game == null || !game.npcExists(npc)) return;
+        if (!game.npcExists(npc)) {
+            return;
+        }
 
         if (!game.isInProgress()) {
-            player.sendMessage(plugin.getLang("game-not-in-progress"));
             return;
         }
 
@@ -196,7 +198,7 @@ public class EventListener implements Listener {
             return;
         }
 
-        if (!game.getRequiredItems().contains(itemStack)) {
+        if (!Utils.getItemStacksFromItems(game.getRequiredItems()).contains(itemStack)) {
 
             int required = game.getRequirementForItem(itemStack);
 
@@ -214,7 +216,7 @@ public class EventListener implements Listener {
             itemStack.setAmount(required);
         }
 
-        if (player.getInventory().removeItem(itemStack).size() > 0) {
+        if (player.getInventory().removeItem(itemStack).size() > 0) { // todo remove it from the itemstack instead
             player.sendMessage(plugin.getLang("error"));
             return;
         }
@@ -226,14 +228,15 @@ public class EventListener implements Listener {
         player.sendMessage(plugin.parsePlaceholders(plugin.getLang("item-accepted"), "%current%", game.getRequiredItems().size() - updatedMissingItems.size(), "%total%", game.getRequiredItems().size()));
 
         if (updatedMissingItems.size() == 0) {
-            game.win(plugin, gameManager, player);
+            game.win(plugin, player);
             return;
         }
 
-        StringBuilder sb = new StringBuilder(); // Todo actually implement thi-s as customizable and not ugly
+        StringBuilder sb = new StringBuilder();
         int i = 0;
         for (ItemStack missingItem : updatedMissingItems) {
-            sb.append(missingItem.getAmount()).append("x ").append(Utils.getItemName(missingItem.getType()));
+            if (missingItem.getAmount() > 1) sb.append(missingItem.getAmount()).append("x ");
+            sb.append(Utils.getItemName(missingItem.getType()));
             i++;
             if (i < updatedMissingItems.size()) sb.append(", ");
         }
@@ -245,10 +248,10 @@ public class EventListener implements Listener {
     public void onPlayerJoin(PlayerJoinEvent e) {
         Player player = e.getPlayer();
 
-        if (plugin.getDescription().getVersion().startsWith("1.0")) player.sendMessage(HexUtils.colorify("\n&4&lWARNING&f: &cThis server is currently using an alpha version of &4Scavenger&c. Here be dragons!\n&c &c"));
+        // todo: show bossbar if required as well
 
-        Game game = gameManager.getPendingGame(player);
-        if (game == null || !game.isInProgress()) return;
+        if (plugin.getDescription().getVersion().startsWith("1.0")) player.sendMessage(HexUtils.colorify("\n&4&lWARNING&f: &cThis server is currently using an alpha version of &4Scavenger&c. Here be dragons!\n&c &c"));
+        if (!game.playerExists(player) || !game.isInProgress()) return;
 
         game.updateScoreboard(player);
     }

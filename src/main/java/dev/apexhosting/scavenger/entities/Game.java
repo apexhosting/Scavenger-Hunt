@@ -1,19 +1,23 @@
-package dev.geri.scavenger.entities;
+package dev.apexhosting.scavenger.entities;
 
-import dev.geri.scavenger.Scavenger;
-import dev.geri.scavenger.utils.HexUtils;
-import dev.geri.scavenger.utils.Utils;
+import dev.apexhosting.scavenger.Scavenger;
+import dev.apexhosting.scavenger.utils.HexUtils;
+import dev.apexhosting.scavenger.utils.Utils;
+import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.npc.NPC;
+import net.citizensnpcs.trait.LookClose;
+import net.citizensnpcs.trait.SkinTrait;
 import org.bukkit.*;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.enchantments.Enchantment;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -27,120 +31,113 @@ import java.util.*;
 
 public class Game {
 
-    /**
-     * Represents the stage of the game, <code>NONE</code> is for when it has only been loaded yet, the rest are self-explanatory.
-     */
-    public enum Stage {
-        NONE,
-        WAITING_FOR_PLAYERS,
-        LOADING,
-        GRACE_PERIOD,
-        PVP,
-        FINISHED,
-        RESETTING
-    }
-
-    private final Scavenger plugin;
-    private BossBar bar;
-
     // Settings
-    private final int requiredPlayers;
-    private final boolean hardcore;
     private final boolean dropItemsOnKill;
     private final boolean dropItemsOnDeath;
-    private final boolean scoreBoardEnabled;
+    private final boolean scoreBoardEnabled; // Todo: implement this
     private final boolean pvpBossBarEnabled;
     private final int scoreboardShowPlayers;
     private final int gracePeriod;
-    private final int borderSize;
+    private final int smallBorderSize;
+    private final int expandedBorderSize;
     private final int requiredWinners;
-    private final String id;
-    private final String displayName;
     private final String scoreboardTitle;
     private final String pvpBossBarTitle;
     private final String pvpBossBarColour;
     private final String scoreboardLineFormat;
     private final Location spawnPoint;
-    private final Location worldBorderCenter;
-    private final ArrayList<ReturnNPC> npcs;
+    private final ArrayList<ReturnNPC> NPCs;
     private final ArrayList<World> allowedWorlds;
     private final ArrayList<Game.Item> requiredItems;
-    private final ArrayList<Game.Item> starterItems;
+    private final ArrayList<ItemStack> starterItems;
     private final Game.ReturnGui returnGui;
 
+    // Internal
+    private BossBar bossbar;
     private Stage stage;
     private Scoreboard scoreboard;
     private boolean pvpEnabled;
+    private final Scavenger plugin;
     private final HashMap<UUID, ArrayList<ItemStack>> playerReturnedItems = new HashMap<>();
-
     private final ArrayList<BukkitTask> scheduleTasks = new ArrayList<>();
+    private final ArrayList<UUID> winners = new ArrayList<>();
 
     /**
      * Create a new game from a template
      */
-    public Game(Scavenger plugin, int requiredPlayers, boolean hardcore, boolean dropItemsOnKill, boolean dropItemsOnDeath, boolean scoreBoardEnabled, boolean pvpBossBarEnabled, int scoreboardShowPlayers, int gracePeriod, int borderSize, int requiredWinners, String id, String displayName, String scoreboardTitle, String pvpBossBarTitle, String pvpBossBarColour, String scoreboardLineFormat, Location spawnPoint, Location worldBorderCenter, Game.ReturnGui returnGui, ArrayList<ReturnNPC> npcs, ArrayList<World> allowedWorlds, ArrayList<Game.Item> requiredItems, ArrayList<Game.Item> starterItems) {
+    public Game(Scavenger plugin, FileConfiguration config) throws Exception {
+
+        // Internal
         this.plugin = plugin;
-        this.requiredPlayers = requiredPlayers;
-        this.hardcore = hardcore;
-        this.dropItemsOnKill = dropItemsOnKill;
-        this.dropItemsOnDeath = dropItemsOnDeath;
-        this.scoreBoardEnabled = scoreBoardEnabled;
-        this.pvpBossBarEnabled = pvpBossBarEnabled;
-        this.scoreboardShowPlayers = scoreboardShowPlayers;
-        this.gracePeriod = gracePeriod;
-        this.borderSize = borderSize;
-        this.requiredWinners = requiredWinners;
-        this.id = id;
-        this.displayName = displayName;
-        this.scoreboardTitle = scoreboardTitle;
-        this.pvpBossBarTitle = pvpBossBarTitle;
-        this.pvpBossBarColour = pvpBossBarColour;
-        this.scoreboardLineFormat = scoreboardLineFormat;
-        this.spawnPoint = spawnPoint;
-        this.worldBorderCenter = worldBorderCenter;
-        this.returnGui = returnGui;
-        this.npcs = npcs;
-        this.allowedWorlds = allowedWorlds;
-        this.requiredItems = requiredItems;
-        this.starterItems = starterItems;
-
-        this.stage = Stage.NONE;
         this.pvpEnabled = false;
+        this.stage = Stage.NONE;
+
+        String basepath = "settings.";
+
+        // Get basic config settings
+        this.dropItemsOnKill = config.getBoolean(basepath + "drop-items.on-pvp-kill");
+        this.dropItemsOnDeath = config.getBoolean(basepath + "drop-items.on-natural-death");
+        this.scoreBoardEnabled = config.getBoolean(basepath + "scoreboard.enabled");
+        this.pvpBossBarEnabled = config.getBoolean(basepath + "pvp-bossbar.enabled");
+
+        this.scoreboardShowPlayers = config.getInt(basepath + "scoreboard.show-players");
+        this.gracePeriod = config.getInt(basepath + "grace-period");
+        this.smallBorderSize = config.getInt(basepath + "border-size.small");
+        this.expandedBorderSize = config.getInt(basepath + "border-size.expanded");
+        this.requiredWinners = config.getInt(basepath + "winners");
+
+        this.pvpBossBarTitle = config.getString(basepath + "pvp-bossbar.title");
+        this.pvpBossBarColour = config.getString(basepath + "pvp-bossbar.colour");
+        this.scoreboardTitle = config.getString(basepath + "scoreboard.title");
+        this.scoreboardLineFormat = config.getString(basepath + "scoreboard.line-format");
+        this.spawnPoint = new Location(Bukkit.getWorld(config.getString(basepath + "spawnpoint.world", "")), config.getInt(basepath + "spawnpoint.x"), config.getInt(basepath + "spawnpoint.y"), config.getInt(basepath + "spawnpoint.z"));
+
+        // Load GUI
+        ArrayList<Game.Item> items = Utils.getItemsFromConfig(config, basepath + "return-gui.items");
+        this.returnGui = new Game.ReturnGui(config.getString(basepath + "return-gui.title"), config.getInt(basepath + "return-gui.rows"), items.get(0), items.get(1));
+
+        // Load allowed worlds
+        this.allowedWorlds = new ArrayList<>() {{
+            for (String worldName : config.getStringList(basepath + "worlds")) {
+                World world = Bukkit.getWorld(worldName);
+                if (world != null) this.add(world);
+                else throw new NullPointerException("There was an issue loading one of the worlds: " + worldName);
+            }
+        }};
+
+        // Load return NPCs
+        this.NPCs = new ArrayList<>();
+        for (String npcName : config.getConfigurationSection(basepath + "return-npcs").getKeys(false)) {
+
+            // Basic NPC settings
+            String npcPath = basepath + "return-npcs." + npcName + ".";
+            boolean lookClose = config.getBoolean(npcPath + "look-close");
+            String npcDisplayName = config.getString(npcPath + "displayname");
+            String skin = config.getString(npcPath + "skin");
+            World world = Bukkit.getWorld(config.getString(npcPath + "world", ""));
+            int x = config.getInt(npcPath + "x");
+            int y = config.getInt(npcPath + "y");
+            int z = config.getInt(npcPath + "z");
+
+            if (world == null) throw new NullPointerException("There was an issue loading one of the worlds for an NPC!");
+
+            NPC npc;
+            try {
+                npc = CitizensAPI.getNPCRegistry().createNPC(EntityType.PLAYER, npcDisplayName);
+                if (lookClose) npc.getOrAddTrait(LookClose.class).lookClose(true);
+                npc.getOrAddTrait(SkinTrait.class).setSkinName(skin);
+            } catch (Exception exception) {
+                throw new IllegalArgumentException("There was an issue creating one of the NPCs: (" + npcName + "): " + exception.getMessage());
+            }
+            this.NPCs.add(new Game.ReturnNPC(npcDisplayName, npc, new Location(world, x, y, z)));
+        }
+
+
+        // Load items
+        this.requiredItems = Utils.getItemsFromConfig(config, basepath + "required-items");
+        this.starterItems = Utils.getItemStacksFromItems(Utils.getItemsFromConfig(config, basepath + "starter-items"));
     }
 
-    /**
-     * Create a new game from a template
-     *
-     * @param game A new Game object
-     */
-    public Game(Game game) {
-        this.plugin = game.plugin;
-        this.requiredPlayers = game.requiredPlayers;
-        this.hardcore = game.hardcore;
-        this.dropItemsOnKill = game.dropItemsOnKill;
-        this.dropItemsOnDeath = game.dropItemsOnDeath;
-        this.scoreBoardEnabled = game.scoreBoardEnabled;
-        this.pvpBossBarEnabled = game.pvpBossBarEnabled;
-        this.scoreboardShowPlayers = game.scoreboardShowPlayers;
-        this.gracePeriod = game.gracePeriod;
-        this.borderSize = game.borderSize;
-        this.requiredWinners = game.requiredWinners;
-        this.id = game.id;
-        this.displayName = game.displayName;
-        this.scoreboardTitle = game.scoreboardTitle;
-        this.pvpBossBarTitle = game.pvpBossBarTitle;
-        this.pvpBossBarColour = game.pvpBossBarColour;
-        this.scoreboardLineFormat = game.scoreboardLineFormat;
-        this.spawnPoint = game.spawnPoint;
-        this.worldBorderCenter = game.worldBorderCenter;
-        this.returnGui = game.returnGui;
-        this.npcs = game.npcs;
-        this.allowedWorlds = game.allowedWorlds;
-        this.requiredItems = game.requiredItems;
-        this.starterItems = game.starterItems;
-        this.stage = Stage.NONE;
-        this.pvpEnabled = false;
-    }
 
     /**
      * Start the game, this will spawn all the NPCs, move all the players, set up the world border, etc.
@@ -152,13 +149,15 @@ public class Game {
         this.stage = Stage.LOADING;
 
         // Spawn NPCs
-        for (ReturnNPC npc : npcs) npc.getNPC().spawn(npc.getLocation());
+        for (ReturnNPC npc : NPCs) {
+            npc.getNPC().spawn(npc.getLocation());
+        }
 
         // Give items to players
         for (Player player : players) {
             if (player == null) continue;
             player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 150, 1, false, false, false));
-            for (ItemStack starterItem : Utils.getItemStacksFromItems(starterItems)) player.getInventory().addItem(starterItem);
+            for (ItemStack starterItem : starterItems) player.getInventory().addItem(starterItem);
             this.playerReturnedItems.put(player.getUniqueId(), new ArrayList<>());
             player.setInvulnerable(true);
             player.teleport(spawnPoint);
@@ -177,22 +176,22 @@ public class Game {
                     startPhase2(plugin, players);
                 }
             }
-        }.runTaskTimer(plugin, 0, 2));
+        }.runTaskTimer(plugin, 0, 20));
     }
 
     private void startPhase2(Scavenger plugin, ArrayList<Player> players) {
 
-        bar = Bukkit.createBossBar(HexUtils.colorify(plugin.parsePlaceholders(pvpBossBarTitle, "%remaining%", gracePeriod * 60)), (pvpBossBarColour.equalsIgnoreCase("auto") ? BarColor.GREEN : BarColor.valueOf(pvpBossBarColour)), BarStyle.SEGMENTED_20);
+        bossbar = Bukkit.createBossBar(HexUtils.colorify(plugin.parsePlaceholders(pvpBossBarTitle, "%remaining%", gracePeriod * 60)), (pvpBossBarColour.equalsIgnoreCase("auto") ? BarColor.GREEN : BarColor.valueOf(pvpBossBarColour)), BarStyle.SEGMENTED_20);
         for (Player player : players)
             if (player != null) {
                 player.setInvulnerable(false);
-                if (pvpBossBarEnabled) bar.addPlayer(player);
+                if (pvpBossBarEnabled) bossbar.addPlayer(player);
             }
 
         this.announceMessage(plugin.getLang("game-started"), Sound.ENTITY_ENDER_DRAGON_GROWL);
 
         // Set world borders
-        this.setWorldBorder(borderSize);
+        this.setWorldBorder(expandedBorderSize);
 
         this.stage = Stage.GRACE_PERIOD;
 
@@ -201,14 +200,14 @@ public class Game {
             this.enablePVP();
         } else if (gracePeriod != -1) {
             this.scheduleTasks.add(new BukkitRunnable() {
-                private final int original = gracePeriod * 60;
+                private final int original = gracePeriod;
                 private int counter = original; // todo
 
                 @Override
                 public void run() {
                     this.counter--;
-                    bar.setTitle(HexUtils.colorify(plugin.parsePlaceholders(pvpBossBarTitle, "%remaining%", gracePeriod * 60)));
-                    bar.setProgress((float) counter / original);
+                    bossbar.setTitle(HexUtils.colorify(plugin.parsePlaceholders(pvpBossBarTitle, "%remaining%", counter)));
+                    bossbar.setProgress((float) counter / original);
                     if (counter == 0) {
                         this.cancel();
                         enablePVP();
@@ -216,12 +215,12 @@ public class Game {
                         announceMessage(plugin.parsePlaceholders(plugin.getLang("pvp-enable"), "%remaining%", counter), Sound.BLOCK_NOTE_BLOCK_PLING); // todo
                     }
 
-                    if (pvpBossBarColour.equalsIgnoreCase("auto+")) {
-                        if (counter == 60) bar.setColor(BarColor.YELLOW);
-                        if (counter == 30) bar.setColor(BarColor.RED);
+                    if (pvpBossBarColour.equalsIgnoreCase("AUTO")) {
+                        if (counter == 60) bossbar.setColor(BarColor.YELLOW);
+                        if (counter == 30) bossbar.setColor(BarColor.RED);
                     }
                 }
-            }.runTaskTimer(plugin, 0, 2));
+            }.runTaskTimer(plugin, 0, 20));
         }
     }
 
@@ -231,7 +230,7 @@ public class Game {
     public void enablePVP() {
         this.pvpEnabled = true;
         this.announceMessage(plugin.getLang("pvp-enabled"), Sound.ENTITY_ENDER_DRAGON_GROWL);
-        this.bar.removeAll();
+        this.bossbar.removeAll();
     }
 
     /**
@@ -260,7 +259,7 @@ public class Game {
 
     }
 
-    // todo docs
+    // todo docs, clean this up
     public void announceMessage(String message, Sound... sounds) {
         for (World world : allowedWorlds) {
             for (Player player : world.getPlayers()) {
@@ -273,7 +272,7 @@ public class Game {
     private void setWorldBorder(int size) {
         for (World world : allowedWorlds) {
             WorldBorder border = world.getWorldBorder();
-            border.setCenter(worldBorderCenter);
+            border.setCenter(spawnPoint);
             border.setSize(size, size / 20);
         }
     }
@@ -353,15 +352,14 @@ public class Game {
      * Stop the game, teleport all the players back, reset world border, etc
      */
     public void stop() {
+        this.stage = Stage.RESETTING;
 
         // Cancel pending tasks
         for (BukkitTask task : scheduleTasks) task.cancel();
 
         // Hide scoreboard
         for (UUID playerUUID : playerReturnedItems.keySet()) {
-
             Player player = Bukkit.getPlayer(playerUUID);
-            // todo? does it have to use the cached results instead of World#getPlayers??
             if (player == null) continue;
             player.setScoreboard(Bukkit.getScoreboardManager().getNewScoreboard());
             player.setInvulnerable(true);
@@ -369,12 +367,13 @@ public class Game {
             player.setInvulnerable(false);
         }
 
-        this.bar.removeAll();
+        this.bossbar.removeAll();
+        this.winners.clear();
 
-        this.setWorldBorder(20); // todo: perhaps have the spawn point and the world border center be the same to be safe?
+        this.setWorldBorder(smallBorderSize);
 
         // Remove NPCs
-        for (ReturnNPC returnNPC : npcs) {
+        for (ReturnNPC returnNPC : NPCs) {
             NPC npc = returnNPC.getNPC();
 
             if (npc == null || !npc.isSpawned()) continue;
@@ -383,11 +382,12 @@ public class Game {
             location.getWorld().spawnParticle(Particle.SMOKE_LARGE, location, 500, 0, 1.5, 0);
             location.getWorld().playSound(location, Sound.ENTITY_GENERIC_EXPLODE, 10, 2);
 
-            npc.destroy();
+            npc.despawn();
         }
 
         // Clear stored invs
-        playerInventories.clear();
+        this.playerInventories.clear();
+        this.stage = Stage.NONE;
     }
 
     private final HashMap<UUID, Inventory> playerInventories = new HashMap<>();
@@ -402,19 +402,13 @@ public class Game {
         Inventory inventory = playerInventories.get(player.getUniqueId());
 
         if (inventory == null || update) {
-            // Todo add customization for this
             inventory = Bukkit.createInventory(player, returnGui.getRowCount() * 9, returnGui.getTitle());
 
             int i = 9;
-            for (Game.Item requireItem : requiredItems) {
-                Game.Item item;
-
-                if (hasPlayerCompletedItem(player, requireItem.getItemStack())) item = returnGui.getCompletedItem();
-                else item = returnGui.getRegularItem();
-
-                item = new Game.Item(item).setDisplayName(plugin.parsePlaceholders(item.getDisplayName(), "%itemname%", Utils.getItemName(requireItem.getMaterial()), "%amount%", requireItem.getAmount()));
-
-                inventory.setItem(i, item.getItemStack(requireItem.getMaterial()));
+            for (Game.Item requiredItem : requiredItems) {
+                Game.Item formattingItem = this.hasPlayerCompletedItem(player, requiredItem.getItemStack()) ? returnGui.getCompletedItem() : returnGui.getRegularItem();
+                Game.Item formattedItem = new Game.Item(formattingItem).setDisplayName(plugin.parsePlaceholders(formattingItem.getDisplayName(), "%itemname%", Utils.getItemName(requiredItem.getMaterial()), "%amount%", requiredItem.getAmount()));
+                inventory.setItem(i, formattedItem.getItemStack(requiredItem.getMaterial()));
                 i++;
             }
 
@@ -442,19 +436,31 @@ public class Game {
     }
 
     /**
-     * Mark the game as won by a specific user // Todo: rewrite so there can be several winners
+     * Mark add a winner to the game and end it if the requirement is met
      *
-     * @param plugin
-     * @param gameManager
-     * @param player
+     * @param plugin The main instance of the plugin
+     * @param player The player to add
      */
-    public void win(JavaPlugin plugin, GameManager gameManager, Player player) {
+    public void win(Scavenger plugin, Player player) {
+
+        this.winners.add(player.getUniqueId());
+
+        if (winners.size() < requiredWinners) {
+            this.announceMessage(plugin.parsePlaceholders(plugin.getLang("chat-announce-new-winner"), "%place%", winners.size(), "%playername%", player.getDisplayName(), "%maxwinners%", requiredWinners));
+            return;
+        }
+
         this.stage = Stage.FINISHED;
+        this.announceMessage("Game over!", null, 30, 100, 30);
 
-        this.announceMessage("&6&l" + player.getDisplayName() + " won!", null, 30, 100, 30);
+        String message = plugin.getLang("chat-announce-all-winners");
+        for (int i = 1; i < 100; i++) {
+            message = message.replaceAll("%top" + i + "%", winners.size() > i - 1 ? (Bukkit.getPlayer(winners.get(i - 1)) != null ? Bukkit.getPlayer(winners.get(i - 1)).getDisplayName() : "Unknown player") : " - ");
+        }
 
-        // Todo: Ensure the stop there only gets called if it's actually being stopped
-        Bukkit.getScheduler().runTaskLater(plugin, () -> gameManager.cleanUp(this), 60);
+        this.announceMessage(message, Sound.UI_TOAST_CHALLENGE_COMPLETE);
+
+        Bukkit.getScheduler().runTaskLater(plugin, this::stop, 60);
     }
 
     /**
@@ -490,7 +496,7 @@ public class Game {
      * @return Whether it exists in the game
      */
     public boolean npcExists(NPC npc) {
-        for (ReturnNPC returnNPC : npcs) if (npc == returnNPC.getNPC()) return true;
+        for (ReturnNPC returnNPC : NPCs) if (npc == returnNPC.getNPC()) return true;
         return false;
     }
 
@@ -502,7 +508,9 @@ public class Game {
      * @return Whether the player has completed a specific item
      */
     public boolean hasPlayerCompletedItem(Player player, ItemStack item) {
-        for (ItemStack storedItem : playerReturnedItems.get(player.getUniqueId())) if (storedItem.getType() == item.getType() && item.isSimilar(storedItem)) return true;
+        for (ItemStack storedItem : playerReturnedItems.get(player.getUniqueId())) {
+            if (storedItem.getType() == item.getType() && item.isSimilar(storedItem)) return true;
+        }
         return false;
     }
 
@@ -523,7 +531,7 @@ public class Game {
     /**
      * @return All the required items to complete the game
      */
-    public ArrayList<Game.Item> getRequiredItems() {
+    public ArrayList<Item> getRequiredItems() {
         return requiredItems;
     }
 
@@ -562,13 +570,6 @@ public class Game {
     }
 
     /**
-     * @return The ID/name of the game template
-     */
-    public String getId() {
-        return id;
-    }
-
-    /**
      * @return Whether items should be dropped when a user is killed by another player
      */
     public boolean shouldDropItemsOnKill() {
@@ -587,31 +588,6 @@ public class Game {
      */
     public ReturnGui getReturnGui() {
         return returnGui;
-    }
-
-    @Override
-    public String toString() {
-        return "requiredPlayers: " + requiredPlayers + "\n" +
-                "hardcore: " + hardcore + "\n" +
-                "dropItemsOnKill: " + dropItemsOnKill + "\n" +
-                "dropItemsOnDeath: " + dropItemsOnDeath + "\n" +
-                "scoreBoardEnabled: " + scoreBoardEnabled + "\n" +
-                "scoreboardShowPlayers: " + scoreboardShowPlayers + "\n" +
-                "gracePeriod: " + gracePeriod + "\n" +
-                "borderSize: " + borderSize + "\n" +
-                "requiredWinners: " + requiredWinners + "\n" +
-                "id: " + id + "\n" +
-                "displayName: " + displayName + "\n" +
-                "scoreboardTitle: " + scoreboardTitle + "\n" +
-                "spawnPoint: " + spawnPoint + "\n" +
-                "worldBorderCenter: " + worldBorderCenter + "\n" +
-                "npcs: " + npcs + "\n" +
-                "allowedWorlds: " + allowedWorlds + "\n" +
-                "requiredItems: " + requiredItems + "\n" +
-                "playerReturnedItems: " + playerReturnedItems + "\n" +
-                "stage: " + stage + "\n" +
-                "scoreboard: " + scoreboard + "\n" +
-                "pvpEnabled: " + pvpEnabled + "\n";
     }
 
     /**
@@ -685,15 +661,20 @@ public class Game {
          * @return The updated {@link ItemStack}
          */
         public ItemStack getItemStack(boolean... update) {
-            if (update.length > 0 && update[0] || itemStack == null) this.updateProperties();
+            if (update.length > 0 && update[0] || itemStack == null) {
+                this.updateProperties();
+            }
             return itemStack;
         }
 
-        // Todo docs
+        /**
+         * Update all the properties of the item
+         *
+         * @return The update item
+         */
         public Game.Item updateProperties() {
-            this.itemStack = new ItemStack(isMaterialAuto() ? Material.AIR : material);
-            this.itemStack.setItemMeta(itemMeta);
 
+            this.itemStack = new ItemStack(material == null && isMaterialAuto() ? Material.AIR : material);
 
             if (itemMeta != null) {
                 this.itemMeta.setDisplayName(displayName);
@@ -781,6 +762,19 @@ public class Game {
             this.itemStack = itemStack;
             return this;
         }
+
+        @Override
+        public String toString() {
+            return "material: " + material + " \n" +
+                    "materialRaw: " + materialRaw + " \n" +
+                    "lore: " + lore + " \n" +
+                    "displayName: " + displayName + " \n" +
+                    "amount: " + amount + " \n" +
+                    "amountRaw: " + amountRaw + " \n" +
+                    "enchantments: " + enchantments + " \n" +
+                    "itemMeta: " + itemMeta + " \n" +
+                    "itemStack: " + itemStack + " \n";
+        }
     }
 
     /**
@@ -831,6 +825,18 @@ public class Game {
         public Item getCompletedItem() {
             return completedItem;
         }
+    }
+
+    /**
+     * Represents the stage of the game, <code>NONE</code> is for when it has only been loaded yet, the rest are self-explanatory.
+     */
+    public enum Stage {
+        NONE,
+        LOADING,
+        GRACE_PERIOD,
+        PVP,
+        FINISHED,
+        RESETTING
     }
 
 
