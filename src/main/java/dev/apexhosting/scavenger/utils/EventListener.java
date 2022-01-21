@@ -2,16 +2,12 @@ package dev.apexhosting.scavenger.utils;
 
 import dev.apexhosting.scavenger.Scavenger;
 import dev.apexhosting.scavenger.entities.Game;
-import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.npc.NPC;
 import org.bukkit.Material;
 import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.EntityDamageByBlockEvent;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.entity.PlayerDeathEvent;
-import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.entity.*;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.player.PlayerFishEvent;
@@ -25,10 +21,14 @@ import java.util.ArrayList;
 public class EventListener implements Listener {
 
     private final Scavenger plugin;
-    private final Game game;
+    private Game game;
 
     public EventListener(Scavenger plugin, Game game) {
         this.plugin = plugin;
+        this.game = game;
+    }
+
+    public void updateGame(Game game) {
         this.game = game;
     }
 
@@ -37,6 +37,7 @@ public class EventListener implements Listener {
         Player killed = e.getEntity();
         Player killer = e.getEntity().getKiller();
 
+        if (!game.isInProgress()) return;
         if (!game.playerExists(killed)) return;
 
         if (killer != null) {
@@ -51,6 +52,28 @@ public class EventListener implements Listener {
             e.setKeepLevel(true);
             e.setDroppedExp(0);
             e.getDrops().clear();
+        }
+    }
+
+    @EventHandler
+    public void onEntityDamage(EntityDamageEvent e) {
+        if (!(e.getEntity() instanceof Player player)) return;
+        if (!game.isInProgress()) return;
+        if (!game.playerExists(player)) return;
+        if (game.isPvpEnabled()) return;
+
+        switch (e.getCause()) {
+            case FIRE, FIRE_TICK -> {
+                if (game.isGracePeriodFireDamageDisabled()) {
+                    e.setDamage(0);
+                    e.setCancelled(true);
+                }
+            }
+
+            case FALL -> {
+                e.setDamage(0);
+                e.setCancelled(true);
+            }
         }
     }
 
@@ -85,10 +108,22 @@ public class EventListener implements Listener {
     public void onEntityDamageByEntity(EntityDamageByEntityEvent e) {
         if (!(e.getEntity() instanceof Player attacked)) return;
 
+        Entity damager = e.getDamager();
+
+        // Open GUI if it's an NPC
+        if (game.getNPC(e.getEntity()) != null && damager instanceof Player player) {
+            if (!game.isInProgress(true)) {
+                player.sendMessage(plugin.getLang("not-in-progress"));
+                return;
+            }
+
+            player.openInventory(game.getInventory(player, false));
+            e.setCancelled(true);
+            return;
+        }
+
         if (!game.playerExists(attacked)) return;
         if (game.isPvpEnabled()) return;
-
-        Entity damager = e.getDamager();
 
         // Melee
         if (damager instanceof Player attacker) {
@@ -157,15 +192,14 @@ public class EventListener implements Listener {
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent e) {
+
         if (!(e.getWhoClicked() instanceof Player player)) return;
         if (e.getClickedInventory() == null) return;
 
         if (!game.playerExists(player)) return;
         if (!game.isInProgress()) return;
 
-        if (!game.getPlayerInventories().containsValue(e.getInventory())) {
-            return;
-        }
+        if (!game.getPlayerInventories().containsValue(e.getInventory())) return;
 
         e.setCancelled(true);
     }
@@ -173,22 +207,25 @@ public class EventListener implements Listener {
     @EventHandler
     public void onPlayerInteractAtEntity(PlayerInteractEntityEvent e) {
         if (e.getHand() == EquipmentSlot.OFF_HAND) return;
-        if (!e.getRightClicked().hasMetadata("NPC")) return;
+
+        NPC npc = game.getNPC(e.getRightClicked());
+        if (npc == null) return;
 
         Player player = e.getPlayer();
+
+        if (!game.isInProgress(true)) {
+            player.sendMessage(plugin.getLang("not-in-progress"));
+            e.setCancelled(true);
+            return;
+        }
+
         if (!game.playerExists(player)) return;
-        NPC npc = CitizensAPI.getNPCRegistry().getNPC(e.getRightClicked());
+
+        e.setCancelled(true);
+
         ItemStack itemStack = player.getInventory().getItemInMainHand();
 
-        if (!game.npcExists(npc)) {
-            return;
-        }
-
-        if (!game.isInProgress()) {
-            return;
-        }
-
-        if (itemStack.getType() == Material.AIR) {
+        if (itemStack.getType() == Material.AIR || player.isSneaking()) {
             player.openInventory(game.getInventory(player, false));
             return;
         }
@@ -198,30 +235,25 @@ public class EventListener implements Listener {
             return;
         }
 
-        if (!Utils.getItemStacksFromItems(game.getRequiredItems()).contains(itemStack)) {
+        int requiredAmount = game.getRequirementForItem(itemStack);
 
-            int required = game.getRequirementForItem(itemStack);
-
-            if (required == 0) {
-                player.sendMessage(plugin.getLang("incorrect-item-provided"));
-                return;
-            }
-
-            if (itemStack.getAmount() < required) {
-                player.sendMessage(plugin.parsePlaceholders(plugin.getLang("item-not-enough"), "%required%", required, "%amount%", itemStack.getAmount()));
-                return;
-            }
-
-            itemStack = new ItemStack(itemStack);
-            itemStack.setAmount(required);
-        }
-
-        if (player.getInventory().removeItem(itemStack).size() > 0) { // todo remove it from the itemstack instead
-            player.sendMessage(plugin.getLang("error"));
+        if (requiredAmount == 0) {
+            player.sendMessage(plugin.getLang("incorrect-item-provided"));
             return;
         }
 
-        game.completeItem(player, itemStack);
+        if (itemStack.getAmount() < requiredAmount) {
+            player.sendMessage(plugin.parsePlaceholders(plugin.getLang("item-not-enough"), "%required%", requiredAmount, "%amount%", itemStack.getAmount()));
+            return;
+        }
+
+        if (itemStack.getAmount() == requiredAmount) {
+            player.getInventory().remove(player.getInventory().getItemInMainHand());
+        } else {
+            itemStack.setAmount(itemStack.getAmount() - requiredAmount);
+        }
+
+        this.game.completeItem(player, itemStack);
 
         ArrayList<ItemStack> updatedMissingItems = game.getMissingItems(player);
 
@@ -248,12 +280,10 @@ public class EventListener implements Listener {
     public void onPlayerJoin(PlayerJoinEvent e) {
         Player player = e.getPlayer();
 
-        // todo: show bossbar if required as well
-
         if (plugin.getDescription().getVersion().startsWith("1.0")) player.sendMessage(HexUtils.colorify("\n&4&lWARNING&f: &cThis server is currently using an alpha version of &4Scavenger&c. Here be dragons!\n&c &c"));
         if (!game.playerExists(player) || !game.isInProgress()) return;
 
-        game.updateScoreboard(player);
+        this.game.updateScoreboard(player);
     }
 
 }

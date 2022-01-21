@@ -10,12 +10,19 @@ depend:
   - Citizens
 
 commands:
+  items:
+    aliases: [ i ]
+    permission: scavenger.player.items
+    description: See what items are left to be colleted!
   scavenger:
     aliases: [ s, game ]
     permission: scavenger.help
     description: Manage all commands from the scavenger plugin
 
 permissions:
+  scavenger.player.items:
+    description: Permission to use the /items command to see what items are left
+    default: true
   scavenger.help:
     description: Permission to get help with the plugin
     default: op

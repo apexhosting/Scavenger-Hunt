@@ -1,10 +1,6 @@
 package dev.apexhosting.scavenger.utils;
 
 import dev.apexhosting.scavenger.entities.Game;
-import net.md_5.bungee.api.chat.BaseComponent;
-import net.md_5.bungee.api.chat.ComponentBuilder;
-import net.md_5.bungee.api.chat.HoverEvent;
-import net.md_5.bungee.api.chat.hover.content.Text;
 import org.apache.commons.lang.StringUtils;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -18,8 +14,6 @@ import org.bukkit.inventory.meta.ItemMeta;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class Utils {
 
@@ -45,10 +39,14 @@ public class Utils {
      * @param items The list of items to convert
      * @return The converted list of {@link ItemStack}-s
      */
-    public static ArrayList<ItemStack> getItemStacksFromItems(ArrayList<Game.Item> items, Material... material) {
+    public static ArrayList<ItemStack> getItemStacksFromItems(ArrayList<Game.Item> items, Material material, int amount) {
         ArrayList<ItemStack> newItems = new ArrayList<>();
-        for (Game.Item item : items) newItems.add(item.getItemStack(material.length > 0 && material[0] != null ? material[0] : null));
+        for (Game.Item item : items) newItems.add(item.getItemStack(material, amount));
         return newItems;
+    }
+
+    public static ArrayList<ItemStack> getItemStacksFromItems(ArrayList<Game.Item> items) {
+        return getItemStacksFromItems(items, null, 0);
     }
 
     /**
@@ -69,7 +67,7 @@ public class Utils {
             String material = "";
             String name = null;
             String amountRaw = "1";
-            boolean hideEnchantments = false;
+            boolean hideEnchants = false;
             ArrayList<String> lore = new ArrayList<>();
             HashMap<Enchantment, Integer> enchantments = new HashMap<>();
 
@@ -84,7 +82,7 @@ public class Utils {
                     case "material" -> material = value;
                     case "amount" -> amountRaw = value;
                     case "name" -> name = HexUtils.colorify(value);
-                    case "hide-enchants" -> hideEnchantments = Boolean.parseBoolean(value);
+                    case "hide-enchants" -> hideEnchants = Boolean.parseBoolean(value);
                     case "lore" -> {
                         for (String loreLine : config.getStringList(itemPath + ".lore")) lore.add(HexUtils.colorify(loreLine));
                     }
@@ -112,38 +110,10 @@ public class Utils {
 
             if (material.equalsIgnoreCase(Material.WRITTEN_BOOK.name())) {
 
-                ArrayList<BaseComponent[]> convertedPages = new ArrayList<>();
-
-                // Todo: make this actually work — maybe not
-
-                for (String page : pages) {
-                    ComponentBuilder cb = new ComponentBuilder();
-                    StringBuilder previousComponent = new StringBuilder();
-                    for (String word : page.split(" ")) {
-
-                        if (word.startsWith("<hover=\"")) { // If there are no spaces V
-                            if (word.endsWith("</hover>")) cb.append(parseHoverComponentes(HexUtils.colorify(word, true))).append(" ").reset();
-                            else previousComponent.append(word).append(" ");
-                        } else {
-                            if (previousComponent.length() == 0) cb.append(word).append(" "); // Regular text
-                            else { // If tag is closed
-                                if (word.endsWith("</hover>")) {
-                                    cb.append(parseHoverComponentes(HexUtils.colorify(previousComponent.append(word).toString(), true))).append(" ").reset();
-                                    previousComponent.setLength(0);
-                                } else {
-                                    previousComponent.append(word).append(" ");
-                                }
-                            }
-                        }
-                    }
-
-                    convertedPages.add(cb.create());
-                }
-
                 BookMeta bookMeta = (BookMeta) itemStack.getItemMeta();
                 if (bookMeta != null) {
                     bookMeta.setAuthor(author);
-                    bookMeta.spigot().setPages(convertedPages);
+                    bookMeta.setPages(pages);
                     bookMeta.setGeneration(generation);
                     bookMeta.setTitle(name);
                     itemStack.setItemMeta(bookMeta);
@@ -154,24 +124,14 @@ public class Utils {
             if (meta != null) {
                 if (name != null && name.length() > 0) meta.setDisplayName(name);
                 if (lore.size() > 0) meta.setLore(lore);
-                if (hideEnchantments) meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+                if (hideEnchants) meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
             }
 
             // Add it to the list
-            items.add(new Game.Item(material, name, lore, amountRaw, meta, enchantments));
+            items.add(new Game.Item(material, name, lore, amountRaw, meta, enchantments, hideEnchants));
         }
 
         return items;
-    }
-
-    private static BaseComponent[] parseHoverComponentes(String text) {
-        Pattern pattern = Pattern.compile("=\"(\n)?.*\">");
-        Matcher matcher = pattern.matcher(text);
-        String hover = "";
-        if (matcher.find()) hover = matcher.group().replaceAll("^=\"|\">$", "");
-
-        text = text.replaceAll("^<hover=\".*\">|</hover>$", "");
-        return new ComponentBuilder(HexUtils.colorify(text, true)).event(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text(hover))).create();
     }
 
 }

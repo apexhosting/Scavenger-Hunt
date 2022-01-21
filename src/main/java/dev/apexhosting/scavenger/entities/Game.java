@@ -4,18 +4,24 @@ import dev.apexhosting.scavenger.Scavenger;
 import dev.apexhosting.scavenger.utils.HexUtils;
 import dev.apexhosting.scavenger.utils.Utils;
 import net.citizensnpcs.api.CitizensAPI;
+import net.citizensnpcs.api.npc.MemoryNPCDataStore;
 import net.citizensnpcs.api.npc.NPC;
+import net.citizensnpcs.api.npc.NPCRegistry;
+import net.citizensnpcs.trait.Gravity;
 import net.citizensnpcs.trait.LookClose;
 import net.citizensnpcs.trait.SkinTrait;
 import org.bukkit.*;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.enchantments.Enchantment;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.potion.PotionEffect;
@@ -34,13 +40,18 @@ public class Game {
     // Settings
     private final boolean dropItemsOnKill;
     private final boolean dropItemsOnDeath;
-    private final boolean scoreBoardEnabled; // Todo: implement this
+    private final boolean scoreBoardEnabled;
     private final boolean pvpBossBarEnabled;
+    private final boolean clearInventoryOnStart;
+    private final boolean clearInventoryOnStop;
+    private final boolean gracePeriodDisableFireDamage;
+    private final boolean gracePeriodDisableFallDamage;
     private final int scoreboardShowPlayers;
     private final int gracePeriod;
     private final int smallBorderSize;
     private final int expandedBorderSize;
     private final int requiredWinners;
+    private final int startCountDown;
     private final String scoreboardTitle;
     private final String pvpBossBarTitle;
     private final String pvpBossBarColour;
@@ -51,11 +62,14 @@ public class Game {
     private final ArrayList<Game.Item> requiredItems;
     private final ArrayList<ItemStack> starterItems;
     private final Game.ReturnGui returnGui;
+    private final HashMap<String, ArrayList<String>> specialCommands;
+    private final HashMap<String, CustomSound> sounds;
 
     // Internal
     private BossBar bossbar;
     private Stage stage;
     private Scoreboard scoreboard;
+    private NPCRegistry npcRegistry;
     private boolean pvpEnabled;
     private final Scavenger plugin;
     private final HashMap<UUID, ArrayList<ItemStack>> playerReturnedItems = new HashMap<>();
@@ -70,7 +84,6 @@ public class Game {
         // Internal
         this.plugin = plugin;
         this.pvpEnabled = false;
-        this.stage = Stage.NONE;
 
         String basepath = "settings.";
 
@@ -79,18 +92,41 @@ public class Game {
         this.dropItemsOnDeath = config.getBoolean(basepath + "drop-items.on-natural-death");
         this.scoreBoardEnabled = config.getBoolean(basepath + "scoreboard.enabled");
         this.pvpBossBarEnabled = config.getBoolean(basepath + "pvp-bossbar.enabled");
+        this.clearInventoryOnStart = config.getBoolean(basepath + "clear-inventory.on-start");
+        this.clearInventoryOnStop = config.getBoolean(basepath + "clear-inventory.on-stop");
+        this.gracePeriodDisableFireDamage = config.getBoolean(basepath + "grace-period.disable-fire");
+        this.gracePeriodDisableFallDamage = config.getBoolean(basepath + "grace-period.disable-fall");
 
         this.scoreboardShowPlayers = config.getInt(basepath + "scoreboard.show-players");
-        this.gracePeriod = config.getInt(basepath + "grace-period");
+        this.gracePeriod = config.getInt(basepath + "grace-period.time");
         this.smallBorderSize = config.getInt(basepath + "border-size.small");
         this.expandedBorderSize = config.getInt(basepath + "border-size.expanded");
         this.requiredWinners = config.getInt(basepath + "winners");
+        this.startCountDown = config.getInt(basepath + "start-count-down", 10);
 
         this.pvpBossBarTitle = config.getString(basepath + "pvp-bossbar.title");
         this.pvpBossBarColour = config.getString(basepath + "pvp-bossbar.colour");
         this.scoreboardTitle = config.getString(basepath + "scoreboard.title");
         this.scoreboardLineFormat = config.getString(basepath + "scoreboard.line-format");
         this.spawnPoint = new Location(Bukkit.getWorld(config.getString(basepath + "spawnpoint.world", "")), config.getInt(basepath + "spawnpoint.x"), config.getInt(basepath + "spawnpoint.y"), config.getInt(basepath + "spawnpoint.z"));
+
+        // Load special event commands
+        this.specialCommands = new HashMap<>();
+        for (String key : config.getConfigurationSection(basepath + "execute-commands").getKeys(false)) {
+            this.specialCommands.put(key, new ArrayList<>(config.getStringList(basepath + "execute-commands." + key)));
+        }
+
+        // Load sounds
+        this.sounds = new HashMap<>();
+        ConfigurationSection soundSection = config.getConfigurationSection(basepath + "sounds");
+        if (soundSection != null) {
+            for (String key : soundSection.getKeys(false)) {
+                Sound sound = Sound.valueOf(config.getString(basepath + "sounds." + key + ".sound"));
+                float volume = (float) config.getDouble(basepath + "sounds." + key + ".volume", 1.0f);
+                float pitch = (float) config.getDouble(basepath + "sounds." + key + ".pitch", 1.0f);
+                this.sounds.put(key, new CustomSound(sound, volume, pitch));
+            }
+        }
 
         // Load GUI
         ArrayList<Game.Item> items = Utils.getItemsFromConfig(config, basepath + "return-gui.items");
@@ -107,6 +143,8 @@ public class Game {
 
         // Load return NPCs
         this.NPCs = new ArrayList<>();
+        if (npcRegistry != null) npcRegistry.deregisterAll();
+        this.npcRegistry = CitizensAPI.createNamedNPCRegistry(plugin.getName(), new MemoryNPCDataStore());
         for (String npcName : config.getConfigurationSection(basepath + "return-npcs").getKeys(false)) {
 
             // Basic NPC settings
@@ -123,17 +161,19 @@ public class Game {
 
             NPC npc;
             try {
-                npc = CitizensAPI.getNPCRegistry().createNPC(EntityType.PLAYER, npcDisplayName);
+                npc = npcRegistry.createNPC(EntityType.PLAYER, npcDisplayName);
                 if (lookClose) npc.getOrAddTrait(LookClose.class).lookClose(true);
+                npc.getOrAddTrait(Gravity.class).gravitate(false);
                 npc.getOrAddTrait(SkinTrait.class).setSkinName(skin);
             } catch (Exception exception) {
                 throw new IllegalArgumentException("There was an issue creating one of the NPCs: (" + npcName + "): " + exception.getMessage());
             }
+
             this.NPCs.add(new Game.ReturnNPC(npcDisplayName, npc, new Location(world, x, y, z)));
         }
 
-
         // Load items
+        this.setStage(Stage.NONE);
         this.requiredItems = Utils.getItemsFromConfig(config, basepath + "required-items");
         this.starterItems = Utils.getItemStacksFromItems(Utils.getItemsFromConfig(config, basepath + "starter-items"));
     }
@@ -146,16 +186,14 @@ public class Game {
      * @param players A list of players who are playing
      */
     public void start(Scavenger plugin, ArrayList<Player> players) {
-        this.stage = Stage.LOADING;
 
-        // Spawn NPCs
-        for (ReturnNPC npc : NPCs) {
-            npc.getNPC().spawn(npc.getLocation());
-        }
+        // Announce the loading
+        this.announceMessage(plugin.getLang("game-loading"), sounds.get("load"));
 
         // Give items to players
         for (Player player : players) {
             if (player == null) continue;
+            if (clearInventoryOnStart) player.getInventory().clear();
             player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 150, 1, false, false, false));
             for (ItemStack starterItem : starterItems) player.getInventory().addItem(starterItem);
             this.playerReturnedItems.put(player.getUniqueId(), new ArrayList<>());
@@ -163,17 +201,23 @@ public class Game {
             player.teleport(spawnPoint);
         }
 
+        this.setStage(Stage.LOADING);
+
+        // Spawn NPCs
+        for (ReturnNPC npc : NPCs) npc.getNPC().spawn(npc.getLocation());
+
         // Start countdown
         this.scheduleTasks.add(new BukkitRunnable() {
-            private int counter = 6; // todo
+            private int counter = startCountDown;
 
             @Override
             public void run() {
                 this.counter--;
-                if (counter != 0) announceMessage(plugin.parsePlaceholders(plugin.getLang("game-starting"), "%remaining%", counter), Sound.BLOCK_NOTE_BLOCK_CHIME); // todo
-                else {
+                if (counter <= 0) {
                     this.cancel();
                     startPhase2(plugin, players);
+                } else if (counter == 60 || counter == gracePeriod / 2 || counter == 30 || counter == 10 || counter <= 5) {
+                    announceMessage(plugin.parsePlaceholders(plugin.getLang("game-starting"), "%remaining%", counter), sounds.get("start-countdown"));
                 }
             }
         }.runTaskTimer(plugin, 0, 20));
@@ -181,38 +225,38 @@ public class Game {
 
     private void startPhase2(Scavenger plugin, ArrayList<Player> players) {
 
-        bossbar = Bukkit.createBossBar(HexUtils.colorify(plugin.parsePlaceholders(pvpBossBarTitle, "%remaining%", gracePeriod * 60)), (pvpBossBarColour.equalsIgnoreCase("auto") ? BarColor.GREEN : BarColor.valueOf(pvpBossBarColour)), BarStyle.SEGMENTED_20);
-        for (Player player : players)
-            if (player != null) {
+        this.bossbar = Bukkit.createBossBar(HexUtils.colorify(plugin.parsePlaceholders(pvpBossBarTitle, "%remaining%", gracePeriod * 60)), (pvpBossBarColour.equalsIgnoreCase("auto") ? BarColor.GREEN : BarColor.valueOf(pvpBossBarColour)), BarStyle.SEGMENTED_20);
+        for (Player player : players) {
+            if (player != null) { // Todo: ensure you can't abuse this
                 player.setInvulnerable(false);
                 if (pvpBossBarEnabled) bossbar.addPlayer(player);
             }
+        }
 
-        this.announceMessage(plugin.getLang("game-started"), Sound.ENTITY_ENDER_DRAGON_GROWL);
+        // Announce the start
+        this.announceMessage(plugin.getLang("game-started"), sounds.get("start"));
 
         // Set world borders
         this.setWorldBorder(expandedBorderSize);
 
-        this.stage = Stage.GRACE_PERIOD;
-
+        this.setStage(Stage.GRACE_PERIOD);
 
         if (gracePeriod == 0) {
             this.enablePVP();
         } else if (gracePeriod != -1) {
             this.scheduleTasks.add(new BukkitRunnable() {
-                private final int original = gracePeriod;
-                private int counter = original; // todo
+                private int counter = gracePeriod;
 
                 @Override
                 public void run() {
                     this.counter--;
                     bossbar.setTitle(HexUtils.colorify(plugin.parsePlaceholders(pvpBossBarTitle, "%remaining%", counter)));
-                    bossbar.setProgress((float) counter / original);
+                    bossbar.setProgress((float) counter / gracePeriod);
                     if (counter == 0) {
                         this.cancel();
                         enablePVP();
-                    } else if (counter == 60 || counter == original / 2 || counter == 30 || counter == 10 || counter <= 5) {
-                        announceMessage(plugin.parsePlaceholders(plugin.getLang("pvp-enable"), "%remaining%", counter), Sound.BLOCK_NOTE_BLOCK_PLING); // todo
+                    } else if (counter == 60 || counter == gracePeriod / 2 || counter == 30 || counter == 10 || counter <= 5) {
+                        announceMessage(plugin.parsePlaceholders(plugin.getLang("pvp-enable"), "%remaining%", counter), sounds.get("pvp-countdown"));
                     }
 
                     if (pvpBossBarColour.equalsIgnoreCase("AUTO")) {
@@ -228,43 +272,27 @@ public class Game {
      * Enable the PVP for the game and notify the players
      */
     public void enablePVP() {
+        this.setStage(Stage.PVP);
         this.pvpEnabled = true;
-        this.announceMessage(plugin.getLang("pvp-enabled"), Sound.ENTITY_ENDER_DRAGON_GROWL);
+        this.announceMessage(plugin.getLang("pvp-enabled"), sounds.get("pvp"));
         this.bossbar.removeAll();
     }
 
     /**
-     * Show a message to all the game's players with a custom sound
+     * Send a message to all the worlds with an optional custom sound
      *
-     * @param title    The main message
-     * @param subtitle The secondary message
-     * @param fadeIn   The amount of ticks to fade the message in
-     * @param stay     The amount of ticks to show the message for
-     * @param fadeOut  The amount of tickets to fade the message out
-     * @param sounds   A list of sounds to play for all playery
+     * @param message The message to send
+     * @param sounds  An optional list of sounds
      */
-    public void announceMessage(String title, String subtitle, int fadeIn, int stay, int fadeOut, Sound... sounds) {
-
-        // Todo: allow for custom pitch and volume
-
-        if (title == null) title = " ";
-        if (subtitle == null) subtitle = " ";
-
-        for (World world : allowedWorlds) {
-            for (Player player : world.getPlayers()) {
-                player.sendTitle(HexUtils.colorify(title), HexUtils.colorify(subtitle), fadeIn, stay, fadeOut);
-                if (sounds != null && sounds.length > 0) for (Sound sound : sounds) player.playSound(player.getLocation(), sound, 1, 1);
-            }
-        }
-
-    }
-
-    // todo docs, clean this up
-    public void announceMessage(String message, Sound... sounds) {
+    public void announceMessage(String message, CustomSound... sounds) {
         for (World world : allowedWorlds) {
             for (Player player : world.getPlayers()) {
                 player.sendMessage(HexUtils.colorify(message));
-                if (sounds != null && sounds.length > 0) for (Sound sound : sounds) player.playSound(player.getLocation(), sound, 1, 1);
+                if (sounds != null && sounds.length > 0) for (CustomSound gameSound : sounds) {
+                    if (gameSound != null) {
+                        player.playSound(player.getLocation(), gameSound.getSound(), gameSound.getVolume(), gameSound.getPitch());
+                    }
+                }
             }
         }
     }
@@ -285,6 +313,7 @@ public class Game {
      * @param player The player to show it to
      */
     public void updateScoreboard(Player player) {
+        if (!scoreBoardEnabled) return;
         if (scoreboard == null) this.updateScoreboard();
         player.setScoreboard(scoreboard);
     }
@@ -294,7 +323,7 @@ public class Game {
      */
     public void updateScoreboard() {
 
-        // Todo: make scoreboard lines customizable
+        if (!scoreBoardEnabled) return;
 
         // Create new scoreboard if there isn't one
         Objective objective;
@@ -352,10 +381,17 @@ public class Game {
      * Stop the game, teleport all the players back, reset world border, etc
      */
     public void stop() {
-        this.stage = Stage.RESETTING;
+        this.setStage(Stage.RESETTING);
 
         // Cancel pending tasks
         for (BukkitTask task : scheduleTasks) task.cancel();
+
+        // Despawn NPCs
+        for (Game.ReturnNPC returnNPC : NPCs) {
+            NPC npc = returnNPC.getNPC();
+            if (npc == null || !npc.isSpawned()) continue;
+            npc.despawn();
+        }
 
         // Hide scoreboard
         for (UUID playerUUID : playerReturnedItems.keySet()) {
@@ -363,31 +399,20 @@ public class Game {
             if (player == null) continue;
             player.setScoreboard(Bukkit.getScoreboardManager().getNewScoreboard());
             player.setInvulnerable(true);
+            if (clearInventoryOnStop) player.getInventory().clear();
             player.teleport(spawnPoint);
             player.setInvulnerable(false);
         }
 
-        this.bossbar.removeAll();
+        if (bossbar != null) this.bossbar.removeAll();
         this.winners.clear();
 
         this.setWorldBorder(smallBorderSize);
 
-        // Remove NPCs
-        for (ReturnNPC returnNPC : NPCs) {
-            NPC npc = returnNPC.getNPC();
-
-            if (npc == null || !npc.isSpawned()) continue;
-
-            Location location = npc.getEntity().getLocation();
-            location.getWorld().spawnParticle(Particle.SMOKE_LARGE, location, 500, 0, 1.5, 0);
-            location.getWorld().playSound(location, Sound.ENTITY_GENERIC_EXPLODE, 10, 2);
-
-            npc.despawn();
-        }
-
         // Clear stored invs
         this.playerInventories.clear();
-        this.stage = Stage.NONE;
+        this.setStage(Stage.NONE);
+        this.pvpEnabled = false;
     }
 
     private final HashMap<UUID, Inventory> playerInventories = new HashMap<>();
@@ -402,13 +427,17 @@ public class Game {
         Inventory inventory = playerInventories.get(player.getUniqueId());
 
         if (inventory == null || update) {
-            inventory = Bukkit.createInventory(player, returnGui.getRowCount() * 9, returnGui.getTitle());
+            inventory = Bukkit.createInventory(player, returnGui.getRowCount() * 9, HexUtils.colorify(returnGui.getTitle()));
 
             int i = 9;
             for (Game.Item requiredItem : requiredItems) {
                 Game.Item formattingItem = this.hasPlayerCompletedItem(player, requiredItem.getItemStack()) ? returnGui.getCompletedItem() : returnGui.getRegularItem();
-                Game.Item formattedItem = new Game.Item(formattingItem).setDisplayName(plugin.parsePlaceholders(formattingItem.getDisplayName(), "%itemname%", Utils.getItemName(requiredItem.getMaterial()), "%amount%", requiredItem.getAmount()));
-                inventory.setItem(i, formattedItem.getItemStack(requiredItem.getMaterial()));
+                Game.Item formattedItem = new Game.Item(formattingItem);
+                formattedItem.setDisplayName(HexUtils.colorify(plugin.parsePlaceholders(formattingItem.getDisplayName(), "%itemname%", HexUtils.colorify(requiredItem.getDisplayName() != null ? requiredItem.getDisplayName() : Utils.getItemName(requiredItem.getMaterial())), "%amount%", requiredItem.getAmount())));
+                if (formattingItem.getLore() == null || formattedItem.getLore().size() == 0) formattedItem.setLore(requiredItem.getLore());
+                if (formattingItem.getEnchantments() == null || formattedItem.getEnchantments().size() == 0) formattedItem.setEnchantments(requiredItem.getEnchantments());
+                if (formattingItem.shouldHideEnchants() || formattedItem.shouldHideEnchants()) formattedItem.hideEnchants(true);
+                inventory.setItem(i, formattedItem.getItemStack(requiredItem.getMaterial(), requiredItem.getAmount()));
                 i++;
             }
 
@@ -419,7 +448,9 @@ public class Game {
         return inventory;
     }
 
-    // Todo docs
+    /**
+     * @return A {@link HashMap} of players' UUIDs and their updated menu inventories
+     */
     public HashMap<UUID, Inventory> getPlayerInventories() {
         return playerInventories;
     }
@@ -431,8 +462,12 @@ public class Game {
      * @return How many of an item is needed or 0 if it is not required
      */
     public int getRequirementForItem(ItemStack item) {
-        for (ItemStack requiredItem : Utils.getItemStacksFromItems(requiredItems)) if (requiredItem.getType() == item.getType()) return requiredItem.getAmount();
+        for (ItemStack requiredItem : Utils.getItemStacksFromItems(requiredItems)) if (requiredItem.isSimilar(item)) return requiredItem.getAmount();
         return 0;
+    }
+
+    public ArrayList<ReturnNPC> getReturnNPCs() {
+        return NPCs;
     }
 
     /**
@@ -450,17 +485,38 @@ public class Game {
             return;
         }
 
-        this.stage = Stage.FINISHED;
-        this.announceMessage("Game over!", null, 30, 100, 30);
+        this.setStage(Stage.FINISHED);
 
         String message = plugin.getLang("chat-announce-all-winners");
         for (int i = 1; i < 100; i++) {
             message = message.replaceAll("%top" + i + "%", winners.size() > i - 1 ? (Bukkit.getPlayer(winners.get(i - 1)) != null ? Bukkit.getPlayer(winners.get(i - 1)).getDisplayName() : "Unknown player") : " - ");
         }
 
-        this.announceMessage(message, Sound.UI_TOAST_CHALLENGE_COMPLETE);
+        this.announceMessage(message, sounds.get("final-win"));
 
         Bukkit.getScheduler().runTaskLater(plugin, this::stop, 60);
+    }
+
+    private void setStage(Stage stage) {
+        this.stage = stage;
+
+        String name;
+        switch (stage) {
+            case LOADING -> name = "onloading";
+            case GRACE_PERIOD -> name = "onstart";
+            case PVP -> name = "onpvp";
+            case FINISHED -> name = "onfinish";
+            default -> {
+                return;
+            }
+        }
+
+        ArrayList<String> commands = this.specialCommands.get(name);
+        if (commands != null) {
+            for (String command : commands) {
+                Bukkit.dispatchCommand(Bukkit.getServer().getConsoleSender(), command);
+            }
+        }
     }
 
     /**
@@ -476,7 +532,7 @@ public class Game {
         this.playerReturnedItems.put(player.getUniqueId(), modifiedItemList);
 
         this.getInventory(player, true);
-        this.updateScoreboard();
+        if (scoreBoardEnabled) this.updateScoreboard();
     }
 
     /**
@@ -492,12 +548,11 @@ public class Game {
     /**
      * Check if an NPC exists in the game
      *
-     * @param npc The NPC to check
-     * @return Whether it exists in the game
+     * @param entity The entity to check
+     * @return The {@link NPC} or null in case it does not exist in the game
      */
-    public boolean npcExists(NPC npc) {
-        for (ReturnNPC returnNPC : NPCs) if (npc == returnNPC.getNPC()) return true;
-        return false;
+    public NPC getNPC(Entity entity) {
+        return npcRegistry.getNPC(entity);
     }
 
     /**
@@ -519,6 +574,10 @@ public class Game {
      */
     public ArrayList<World> getWorlds() {
         return allowedWorlds;
+    }
+
+    public NPCRegistry getNpcRegistry() {
+        return npcRegistry;
     }
 
     /**
@@ -557,7 +616,11 @@ public class Game {
             this.addAll(Utils.getItemStacksFromItems(requiredItems));
         }};
 
-        for (ItemStack itemStack : getPlayerCompletedItems(player)) missingItems.remove(itemStack);
+        ArrayList<ItemStack> completedItems = new ArrayList<>(getPlayerCompletedItems(player));
+
+        for (ItemStack completedItem : completedItems) {
+            missingItems.removeIf(completedItem::isSimilar);
+        }
 
         return missingItems;
     }
@@ -565,8 +628,9 @@ public class Game {
     /**
      * @return Whether the game is currently playing
      */
-    public boolean isInProgress() {
-        return stage == Stage.GRACE_PERIOD || stage == Stage.PVP;
+    public boolean isInProgress(boolean... excludeBeforeStarted) {
+        if (excludeBeforeStarted != null && excludeBeforeStarted.length > 0 && excludeBeforeStarted[0]) return stage != Stage.NONE && stage != Stage.LOADING;
+        return stage != Stage.NONE;
     }
 
     /**
@@ -584,6 +648,20 @@ public class Game {
     }
 
     /**
+     * @return Whether fire damage should be taken by players during grace period
+     */
+    public boolean isGracePeriodFireDamageDisabled() {
+        return gracePeriodDisableFireDamage;
+    }
+
+    /**
+     * @return Whether fall damage should be taken by players during grace period
+     */
+    public boolean isGracePeriodFallDamageDisabled() {
+        return gracePeriodDisableFallDamage;
+    }
+
+    /**
      * @return The customized return GUI instance
      */
     public ReturnGui getReturnGui() {
@@ -591,15 +669,74 @@ public class Game {
     }
 
     /**
+     * Represents a custom sound
+     */
+    public static class CustomSound {
+        private final Sound sound;
+        private float volume;
+        private float pitch;
+
+        public CustomSound(Sound sound, float volume, float pitch) {
+            this.sound = sound;
+            this.volume = volume;
+            this.pitch = pitch;
+        }
+
+        /**
+         * @return The actual type of sound
+         */
+        public Sound getSound() {
+            return sound;
+        }
+
+        /**
+         * @return The volume of the sound
+         */
+        public float getVolume() {
+            return volume;
+        }
+
+        /**
+         * @return The pitch of the sound
+         */
+        public float getPitch() {
+            return pitch;
+        }
+
+        /**
+         * Set the volume of the sound to a new value
+         *
+         * @param volume The new value
+         * @return The builder class
+         */
+        public CustomSound setVolume(float volume) {
+            this.volume = volume;
+            return this;
+        }
+
+        /**
+         * Set the pitch of the sound to a new value
+         *
+         * @param pitch The new value
+         * @return The builder class
+         */
+        public CustomSound setPitch(float pitch) {
+            this.pitch = pitch;
+            return this;
+        }
+    }
+
+    /**
      * Represents a custom item
      */
     public static class Item {
-        private Material material;
         private final String materialRaw;
-        private ArrayList<String> lore = new ArrayList<>();
-        private String displayName;
-        private int amount;
         private final String amountRaw;
+        private int amount;
+        private boolean hideEnchants;
+        private String displayName;
+        private Material material;
+        private ArrayList<String> lore = new ArrayList<>();
         private HashMap<Enchantment, Integer> enchantments = new HashMap<>();
         private ItemMeta itemMeta;
         private ItemStack itemStack;
@@ -613,7 +750,7 @@ public class Game {
          * @param amountRaw      The amount of items this holds or AUTO if it's parsed on the spot
          * @param additionalMeta Any additional {@link ItemMeta} settings
          */
-        public Item(String materialRaw, String displayName, ArrayList<String> lore, String amountRaw, ItemMeta additionalMeta, HashMap<Enchantment, Integer> enchantments) {
+        public Item(String materialRaw, String displayName, ArrayList<String> lore, String amountRaw, ItemMeta additionalMeta, HashMap<Enchantment, Integer> enchantments, boolean hideEnchants) {
             if (!materialRaw.equalsIgnoreCase("AUTO")) this.material = Material.valueOf(materialRaw);
             if (!amountRaw.equalsIgnoreCase("AUTO")) this.amount = Integer.parseInt(amountRaw);
             this.materialRaw = materialRaw;
@@ -622,6 +759,7 @@ public class Game {
             if (lore != null) this.lore = lore;
             this.itemMeta = additionalMeta;
             this.enchantments = enchantments;
+            this.hideEnchants = hideEnchants;
         }
 
         /**
@@ -637,18 +775,21 @@ public class Game {
             this.enchantments = item.enchantments;
             this.itemMeta = item.itemMeta;
             this.itemStack = item.itemStack;
+            this.hideEnchants = item.hideEnchants;
         }
 
         /**
-         * Get the generated item and provide a material to parse in case the material is set to AUTO in the config
+         * Get the generated item and provide an amount and a material to parse in case the amount or material is set to AUTO in the config
          *
-         * @param material The material the parse it with
+         * @param material The material to parse it with
+         * @param amount   The amount the parse it with
          * @return The updated {@link ItemStack}
          */
-        public ItemStack getItemStack(Material material) {
-            if (materialRaw.equalsIgnoreCase("AUTO")) {
+        public ItemStack getItemStack(Material material, int amount) {
+            if (materialRaw.equalsIgnoreCase("AUTO") || amountRaw.equalsIgnoreCase("AUTO")) {
                 if (material != null) this.material = material;
-                return this.getItemStack(material != null);
+                if (amount != 0) this.amount = amount;
+                return this.getItemStack(amount != 0 || material != null);
             }
 
             return this.getItemStack();
@@ -675,10 +816,22 @@ public class Game {
         public Game.Item updateProperties() {
 
             this.itemStack = new ItemStack(material == null && isMaterialAuto() ? Material.AIR : material);
+            this.itemStack.setAmount(amount);
+
+            if (itemMeta == null) this.itemMeta = itemStack.getItemMeta();
+
+            if (amount == 0 && !isAmountAuto()) {
+                try {
+                    amount = Integer.parseInt(amountRaw);
+                } catch (NumberFormatException exception) {
+                    amount = 0;
+                }
+            }
 
             if (itemMeta != null) {
                 this.itemMeta.setDisplayName(displayName);
                 this.itemMeta.setLore(lore);
+                if (hideEnchants) itemMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
                 this.itemStack.setItemMeta(itemMeta);
             }
 
@@ -728,6 +881,10 @@ public class Game {
             return itemMeta;
         }
 
+        public boolean shouldHideEnchants() {
+            return hideEnchants;
+        }
+
         public Item setMaterial(Material material) {
             this.material = material;
             return this;
@@ -760,6 +917,11 @@ public class Game {
 
         public Item setItemStack(ItemStack itemStack) {
             this.itemStack = itemStack;
+            return this;
+        }
+
+        public Item hideEnchants(boolean shouldHideEnchants) {
+            this.hideEnchants = shouldHideEnchants;
             return this;
         }
 
@@ -841,3 +1003,4 @@ public class Game {
 
 
 }
+
