@@ -21,6 +21,18 @@ lang:
 
   game-in-progress: "&cThere is a game in progress already! Stop it using &4/%command% stop&c!"
   game-not-in-progress: "&cYou are not in a game currently! Start a new game using &4/%command% start&c!"
+  game-loading-in-progress: "&cThe game is still loading, please wait a few seconds to use this command!"
+
+  item-craft-notification: |
+    &c
+    &6🗡 &lHEADS UP! &8— &eYou just crafted a required item: &6%itemname%
+    &eMake sure to return it to &6Doug &eat spawn!
+    &c
+  item-pickup-notification: |
+    &c
+    &6🗡 &lHEADS UP! &8— &eYou just picked up a required item: &6%itemname%
+    &eMake sure to return it to &6Doug &eat spawn!
+    &c
 
   no-item-provided: "&cYou must provide an item to return!"
   incorrect-item-provided: "&cThis item is not required for this round!"

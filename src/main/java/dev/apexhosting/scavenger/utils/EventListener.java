@@ -249,6 +249,49 @@ public class EventListener implements Listener {
         e.setCancelled(true);
     }
 
+
+    @EventHandler
+    public void onCraftItem(CraftItemEvent e) {
+        if (!(e.getWhoClicked() instanceof Player player)) return;
+        if (!game.playerExists(player)) return;
+        if (!game.isInProgress(true)) return;
+
+        ItemStack item = e.getCurrentItem();
+        if (item == null) return;
+
+        int required = game.getRequirementForItem(item);
+        if (checkedItems.get(player.getUniqueId()) == null) this.checkedItems.put(player.getUniqueId(), new ArrayList<>());
+        if (required == item.getAmount() && !game.hasPlayerCompletedItem(player, item) && !checkedItems.get(player.getUniqueId()).contains(item)) {
+            player.sendMessage(plugin.parsePlaceholders(plugin.getLang("item-craft-notification"), "%itemname%", Utils.getItemName(item.getType())));
+            this.game.playSound(player, "item-craft-notification");
+
+            // Update list
+            ArrayList<ItemStack> updatedList = checkedItems.get(player.getUniqueId());
+            updatedList.add(item);
+            this.checkedItems.put(player.getUniqueId(), updatedList);
+        }
+    }
+
+    @EventHandler
+    public void onEntityPickupItem(EntityPickupItemEvent e) {
+        if (!(e.getEntity() instanceof Player player)) return;
+        if (!game.playerExists(player)) return;
+        if (!game.isInProgress(true)) return;
+
+        ItemStack item = e.getItem().getItemStack();
+        int required = game.getRequirementForItem(item);
+        if (checkedItems.get(player.getUniqueId()) == null) this.checkedItems.put(player.getUniqueId(), new ArrayList<>());
+        if (required == item.getAmount() && !game.hasPlayerCompletedItem(player, item) && !checkedItems.get(player.getUniqueId()).contains(item)) {
+            player.sendMessage(plugin.parsePlaceholders(plugin.getLang("item-pickup-notification"), "%itemname%", Utils.getItemName(item.getType())));
+            this.game.playSound(player, "item-pickup-notification");
+
+            ArrayList<ItemStack> updatedList = checkedItems.get(player.getUniqueId());
+            updatedList.add(item);
+            this.checkedItems.put(player.getUniqueId(), updatedList);
+        }
+
+    }
+
     @EventHandler
     public void onPlayerInteractAtEntity(PlayerInteractEntityEvent e) {
         if (e.getHand() == EquipmentSlot.OFF_HAND) return;
