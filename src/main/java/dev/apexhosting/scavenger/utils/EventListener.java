@@ -3,6 +3,7 @@ package dev.apexhosting.scavenger.utils;
 import dev.apexhosting.scavenger.Scavenger;
 import dev.apexhosting.scavenger.entities.Game;
 import net.citizensnpcs.api.npc.NPC;
+import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.*;
@@ -325,7 +326,12 @@ public class EventListener implements Listener {
         Player player = e.getPlayer();
 
         if (plugin.getDescription().getVersion().startsWith("1.0")) player.sendMessage(HexUtils.colorify("\n&4&lWARNING&f: &cThis server is currently using an alpha version of &4Scavenger&c. Here be dragons!\n&c &c"));
-        if (!game.playerExists(player) || !game.isInProgress()) return;
+
+        if (!game.isInProgress()) return;
+        if (!game.playerExists(player)) {
+            player.setGameMode(GameMode.SPECTATOR);
+            return;
+        }
 
         this.game.updateScoreboard(player);
     }

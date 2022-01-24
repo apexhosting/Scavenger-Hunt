@@ -194,10 +194,10 @@ public class Game {
         for (Player player : players) {
             if (player == null) continue;
             if (clearInventoryOnStart) player.getInventory().clear();
-            player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 150, 1, false, false, false));
-            for (ItemStack starterItem : starterItems) player.getInventory().addItem(starterItem);
+            this.giveStarterItems(player);
             this.playerReturnedItems.put(player.getUniqueId(), new ArrayList<>());
             player.setInvulnerable(true);
+            player.setGameMode(GameMode.SURVIVAL);
             player.teleport(spawnPoint);
         }
 
@@ -400,6 +400,7 @@ public class Game {
             player.setScoreboard(Bukkit.getScoreboardManager().getNewScoreboard());
             player.setInvulnerable(true);
             if (clearInventoryOnStop) player.getInventory().clear();
+            player.setGameMode(GameMode.SURVIVAL);
             player.teleport(spawnPoint);
             player.setInvulnerable(false);
         }
