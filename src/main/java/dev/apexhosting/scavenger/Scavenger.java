@@ -3,7 +3,10 @@ package dev.apexhosting.scavenger;
 import dev.apexhosting.scavenger.entities.Game;
 import dev.apexhosting.scavenger.utils.EventListener;
 import dev.apexhosting.scavenger.utils.HexUtils;
+import me.clip.placeholderapi.PlaceholderAPI;
+import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
@@ -11,6 +14,7 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Listener;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import javax.annotation.Nonnull;
@@ -41,6 +45,10 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
         // Load config settings and data
         this.eventListener = new EventListener(this, game);
         if (!this.reload()) return;
+
+        // Load placeholders
+        if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) new PlaceholderAPIExpansion().register();
+        else logger.severe("There was an error loading PlaceholderAPI, are you sure it's installed correctly?");
 
         // Register events
         Bukkit.getPluginManager().registerEvents(eventListener, this);
@@ -241,6 +249,47 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
             s = s.replaceAll(String.valueOf(placeholders[i]), String.valueOf(placeholders[i + 1]));
         }
         return s;
+    }
+
+    public class PlaceholderAPIExpansion extends PlaceholderExpansion {
+
+
+        @Override
+        public String getAuthor() {
+            return "Geri";
+        }
+
+        @Override
+        public String getIdentifier() {
+            return "scavenger";
+        }
+
+        @Override
+        public String getVersion() {
+            return "1.0.0";
+        }
+
+        @Override
+        public boolean persist() {
+            return true;
+        }
+
+        @Override
+        public String onRequest(OfflinePlayer player, String params) {
+            if (player == null || player.getPlayer() == null) return "";
+
+            if (params.equalsIgnoreCase("return_count")) {
+                ArrayList<ItemStack> items = game.getPlayerCompletedItems(player.getPlayer());
+                if (items == null) return "";
+                return String.valueOf(items.size());
+            }
+
+            if (params.equalsIgnoreCase("return_count_formatted")) {
+                return HexUtils.colorify(PlaceholderAPI.setPlaceholders(player.getPlayer(), config.getString("placeholderapi-format", "&3Amount returned: &3%scavenger_return_count%")));
+            }
+
+            return null;
+        }
     }
 
 }

@@ -8,10 +8,11 @@ description: A simple scavenger hunt plugin
 website: https://apexminecrafthosting.com/
 depend:
   - Citizens
+softdepend:
+  - PlaceholderAPI
 
 commands:
   items:
-    aliases: [ i ]
     permission: scavenger.player.items
     description: See what items are left to be colleted!
   scavenger:

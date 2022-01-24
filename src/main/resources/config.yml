@@ -60,6 +60,11 @@ lang:
 
 settings:
 
+  # The format of the %scavenger_return_count_formatted% placeholder
+  # All PlaceholderAPI placeholders will work here
+  # Full colour support as well
+  placeholderapi-format: "&3Amount returned: &3%scavenger_return_count%"
+
   # A list of custom sounds
   # The sounds have to be from here: https://hub.spigotmc.org/javadocs/bukkit/org/bukkit/Sound.html
   # The volume and pitch are optional, pitch must be between 0.1-2.0
