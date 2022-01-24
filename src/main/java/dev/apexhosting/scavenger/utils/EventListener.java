@@ -4,32 +4,39 @@ import dev.apexhosting.scavenger.Scavenger;
 import dev.apexhosting.scavenger.entities.Game;
 import net.citizensnpcs.api.npc.NPC;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.*;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.*;
+import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
-import org.bukkit.event.player.PlayerFishEvent;
-import org.bukkit.event.player.PlayerInteractEntityEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.*;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.UUID;
 
 public class EventListener implements Listener {
 
     private final Scavenger plugin;
+    private final HashMap<UUID, ArrayList<ItemStack>> checkedItems;
     private Game game;
 
     public EventListener(Scavenger plugin, Game game) {
         this.plugin = plugin;
         this.game = game;
+        this.checkedItems = new HashMap<>();
     }
 
     public void updateGame(Game game) {
         this.game = game;
+        this.checkedItems.clear();
     }
 
     @EventHandler
@@ -40,18 +47,55 @@ public class EventListener implements Listener {
         if (!game.isInProgress()) return;
         if (!game.playerExists(killed)) return;
 
-        if (killer != null) {
+        if (killer != null) { // Killed
             if (!game.shouldDropItemsOnKill()) {
                 e.setKeepInventory(true);
                 e.setKeepLevel(true);
                 e.setDroppedExp(0);
                 e.getDrops().clear();
+                return;
             }
-        } else if (!game.shouldDropItemsOnDeath()) {
+        } else if (!game.shouldDropItemsOnDeath()) { // Died
             e.setKeepInventory(true);
             e.setKeepLevel(true);
             e.setDroppedExp(0);
             e.getDrops().clear();
+            return;
+        }
+
+        // Remove starter items
+        if (game.shouldKeepStarterItems()) {
+            e.getDrops().removeIf(itemStack -> itemStack.getItemMeta() != null && itemStack.getItemMeta().getPersistentDataContainer().has(new NamespacedKey(plugin, "starter-item"), PersistentDataType.INTEGER));
+        }
+
+    }
+
+    @EventHandler
+    public void onPlayerDropItem(PlayerDropItemEvent e) {
+        Player player = e.getPlayer();
+
+        if (!game.isInProgress()) return;
+        if (!game.playerExists(player)) return;
+        if (!game.shouldKeepStarterItems()) return;
+
+        ItemMeta itemMeta = e.getItemDrop().getItemStack().getItemMeta();
+        if (itemMeta == null) return;
+
+        if (itemMeta.getPersistentDataContainer().has(new NamespacedKey(plugin, "starter-item"), PersistentDataType.INTEGER)) {
+            player.sendMessage(plugin.getLang("starter-item-remove-fail"));
+            e.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onPlayerRespawn(PlayerRespawnEvent e) {
+        Player player = e.getPlayer();
+
+        if (!game.isInProgress()) return;
+        if (!game.playerExists(player)) return;
+
+        if (game.shouldKeepStarterItems()) {
+            if (player.getInventory().isEmpty()) this.game.giveStarterItems(player);
         }
     }
 

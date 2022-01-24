@@ -7,6 +7,7 @@ lang:
   reload-fail: "&cThere was an error reloading the plugin! Please review the console for more information."
   plugin-disabled: "&cThe plugin is currently disabled, please resolve any errors in the console and use the &4/%command% reload &ccommand!"
   not-in-progress: "&cThe game has not started yet, please wait!"
+  starter-item-remove-fail: "&cYou should keep your starter items in case you get stuck!"
 
   game-loading: "&c\n&c\n&2⚠ &lWARNING&f: &aThe game is now loading! Make sure to read the book in your first hotbar slot for more information!\n&c"
   game-starting: "&aThe game is starting in &2%remaining% &aseconds!"
@@ -223,6 +224,9 @@ settings:
 
     # A valid BarColor or AUTO to let the plugin handle colouring (https://hub.spigotmc.org/javadocs/spigot/org/bukkit/boss/BarColor.html)
     colour: AUTO
+
+  # Whether to ensure starter items are not dropped on death
+  keep-starter-items: true
 
   # A list of items given to everyone on start
   starter-items:
