@@ -2,6 +2,8 @@ package dev.apexhosting.scavenger.utils;
 
 import dev.apexhosting.scavenger.entities.Game;
 import org.apache.commons.lang.StringUtils;
+import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -9,6 +11,7 @@ import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.BookMeta;
+import org.bukkit.inventory.meta.CompassMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
@@ -76,6 +79,9 @@ public class Utils {
             BookMeta.Generation generation = null;
             ArrayList<String> pages = new ArrayList<>();
 
+            // Compass-only
+            Location pointTo = null;
+
             for (Map.Entry<String, Object> setting : config.getConfigurationSection(itemPath).getValues(false).entrySet()) {
                 String value = setting.getValue().toString();
                 switch (setting.getKey().toLowerCase()) {
@@ -90,11 +96,14 @@ public class Utils {
                         for (Map.Entry<String, Object> enchant : config.getConfigurationSection(itemPath + ".enchants").getValues(false).entrySet()) enchantments.put(Enchantment.getByKey(NamespacedKey.minecraft(enchant.getKey())), Integer.parseInt(enchant.getValue().toString()));
                     }
 
+                    case "point-to" -> {
+                        pointTo = new Location(Bukkit.getWorld(config.getString(itemPath + ".point-to.world")), config.getDouble(itemPath + ".point-to.x"), config.getDouble(itemPath + ".point-to.y"), config.getDouble(itemPath + ".point-to.z"));
+                    }
+
                     case "author" -> author = HexUtils.colorify(value);
                     case "pages" -> {
                         for (Map.Entry<String, Object> entry : config.getConfigurationSection(itemPath + ".pages").getValues(false).entrySet()) {
                             String page = entry.getValue().toString();
-                            //if (page.length() > 256) throw new IllegalArgumentException("Books must have less than 256 characters per page, page number: #" + entry.getKey() + ", item: " + itemName);
                             pages.add(HexUtils.colorify(page));
                         }
 
@@ -108,8 +117,16 @@ public class Utils {
             ItemStack itemStack = new ItemStack(material.equalsIgnoreCase("AUTO") ? Material.AIR : Material.valueOf(material));
             itemStack.setAmount(amountRaw.equalsIgnoreCase("AUTO") ? -1 : Integer.parseInt(amountRaw));
 
-            if (material.equalsIgnoreCase(Material.WRITTEN_BOOK.name())) {
+            if (material.equalsIgnoreCase(Material.COMPASS.name())) {
+                CompassMeta compassMeta = (CompassMeta) itemStack.getItemMeta();
+                if (compassMeta != null && pointTo != null) {
+                    compassMeta.setLodestoneTracked(false);
+                    compassMeta.setLodestone(pointTo);
+                    itemStack.setItemMeta(compassMeta);
+                }
+            }
 
+            if (material.equalsIgnoreCase(Material.WRITTEN_BOOK.name())) {
                 BookMeta bookMeta = (BookMeta) itemStack.getItemMeta();
                 if (bookMeta != null) {
                     bookMeta.setAuthor(author);

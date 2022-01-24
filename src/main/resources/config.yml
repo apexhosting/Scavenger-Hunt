@@ -226,6 +226,19 @@ settings:
   # A list of items given to everyone on start
   starter-items:
 
+    compass:
+      material: COMPASS
+      name: "&6Golden Compass"
+      lore:
+        - "&c"
+        - "&e&oUse this item to get back to spawn"
+        - "&e&oin case you ever get lost!"
+      point-to:
+        world: event_world
+        x: 137.6
+        y: 68
+        z: 158.5
+
     book:
       material: WRITTEN_BOOK
       name: "&3⛏ &bStarter Instructions!"
