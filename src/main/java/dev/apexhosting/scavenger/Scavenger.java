@@ -30,6 +30,7 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
     private final Logger logger = Bukkit.getLogger();
 
     private Game game;
+    private boolean disabled;
     private FileConfiguration config;
     private EventListener eventListener;
 
@@ -75,9 +76,11 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
             this.eventListener.updateGame(game);
         } catch (Exception exception) {
             logger.severe("There was an issue loading one or more of the configuration settings: " + exception.getMessage());
-            Bukkit.getPluginManager().disablePlugin(this);
+            this.disabled = true;
             return false;
         }
+
+        this.disabled = false;
 
         return true;
     }
@@ -93,13 +96,22 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
     @Override
     public boolean onCommand(@Nonnull CommandSender sender, @Nonnull Command command, @Nonnull String label, String[] args) {
 
+        if (disabled && (args.length == 0 || !args[0].equalsIgnoreCase("reload"))) {
+            if (!sender.hasPermission("scavenger.admin.reload")) {
+                sender.sendMessage(getLang("error"));
+            } else {
+                sender.sendMessage(parsePlaceholders(getLang("plugin-disabled"), "%command%", label));
+            }
+            return true;
+        }
+
         // Handle /items
         if (command.getName().equalsIgnoreCase("items")) {
             if (sender instanceof Player player) {
                 if (!this.hasPermission(sender, "scavenger.player.items")) return true;
 
                 if (!game.isInProgress(true) || !game.playerExists(player)) {
-                    sender.sendMessage(parsePlaceholders(getLang("game-not-in-progress"), "%command%", label));
+                    sender.sendMessage(parsePlaceholders(getLang("game-loading-in-progress")));
                     return true;
                 }
 

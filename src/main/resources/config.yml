@@ -5,6 +5,7 @@ lang:
   unknown-command: "&cThis is not a valid command, please use &4/%command% help &cfor help!"
   reload: "&aSuccessfully reloaded the plugin!"
   reload-fail: "&cThere was an error reloading the plugin! Please review the console for more information."
+  plugin-disabled: "&cThe plugin is currently disabled, please resolve any errors in the console and use the &4/%command% reload &ccommand!"
   not-in-progress: "&cThe game has not started yet, please wait!"
 
   game-loading: "&c\n&c\n&2⚠ &lWARNING&f: &aThe game is now loading! Make sure to read the book in your first hotbar slot for more information!\n&c"
