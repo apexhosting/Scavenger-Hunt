@@ -1,4 +1,5 @@
 # Scavenger-Hunt
+
 A VERY simple scavenger hunt plugin
 
 ---  
@@ -11,15 +12,25 @@ A VERY simple scavenger hunt plugin
 ---  
 
 ## ❔ Commands & Permissions
-- `game start` (`scavenger.admin.start`) - Start a game 
-- `game cheat` (`scavenger.admin.cheat`) - Cheat all the required items in
-- `game stop`  (`scavenger.admin.stop`) - Stop the running game in the world
-- `game reload` (`scavenger.admin.reload`) - Stop all running games and reload all the config settings
+
+- `/items` (`scavenger.player.items`) — Open the GUI for all the required items
+- `/game start` (`scavenger.admin.start`) — Start a game
+- `/game cheat` (`scavenger.admin.cheat`) — Cheat all the required items in
+- `/game stop`  (`scavenger.admin.stop`) — Stop the running game in the world
+- `/game reload` (`scavenger.admin.reload`) — Stop all running games and reload all the config settings
 
 ---  
 
+## Placeholders
+
+The plugin supports PlaceholderAPI
+
+- `%scavenger_return_count%` — Returns the amount of items the player has returned
+- `%scavenger_return_count_formatted%` — Returns the `settings.placeholderapi-format` setting from the config parsed for
+  PAPI placeholders as well as colours
+
 ## 📋 Default Configuration
-_(work in progress)_
+
 ```yml  
 lang:
   error: "&cAn unknown exception occurred, please report this to staff!"
@@ -28,7 +39,11 @@ lang:
   unknown-command: "&cThis is not a valid command, please use &4/%command% help &cfor help!"
   reload: "&aSuccessfully reloaded the plugin!"
   reload-fail: "&cThere was an error reloading the plugin! Please review the console for more information."
+  plugin-disabled: "&cThe plugin is currently disabled, please resolve any errors in the console and use the &4/%command% reload &ccommand!"
+  not-in-progress: "&cThe game has not started yet, please wait!"
+  starter-item-remove-fail: "&cYou should keep your starter items in case you get stuck!"
 
+  game-loading: "&c\n&c\n&2⚠ &lWARNING&f: &aThe game is now loading! Make sure to read the book in your first hotbar slot for more information!\n&c"
   game-starting: "&aThe game is starting in &2%remaining% &aseconds!"
   game-started: "&2&l✔ &a&lGAME STARTED! &f— &aBest of luck everyone!"
 
@@ -40,11 +55,23 @@ lang:
 
   game-in-progress: "&cThere is a game in progress already! Stop it using &4/%command% stop&c!"
   game-not-in-progress: "&cYou are not in a game currently! Start a new game using &4/%command% start&c!"
+  game-loading-in-progress: "&cThe game is still loading, please wait a few seconds to use this command!"
+
+  item-craft-notification: |
+    &c
+    &6🗡 &lHEADS UP! &8— &eYou just crafted a required item: &6%itemname%
+    &eMake sure to return it to &6Doug &eat spawn!
+    &c
+  item-pickup-notification: |
+    &c
+    &6🗡 &lHEADS UP! &8— &eYou just picked up a required item: &6%itemname%
+    &eMake sure to return it to &6Doug &eat spawn!
+    &c
 
   no-item-provided: "&cYou must provide an item to return!"
   incorrect-item-provided: "&cThis item is not required for this round!"
   item-already-provided: "&cYou have already returned this item!"
-  item-not-enough: "&cYou need &4%required% &cof this item, you currently only have &4%required%&c! "
+  item-not-enough: "&cYou need &4%required% &cof this item, you currently only have &4%amount%&c! "
   item-accepted: "&a&lCONGRATS! &8— &aYou now have &2%current% &aout of &2%total%&a items!"
   items-left: "&7Items left: &3%items%"
 
@@ -81,46 +108,117 @@ lang:
 
 settings:
 
-  # Given in seconds, set it to 0 to enable PVP on start, -1 to disable PVP entirely
-  grace-period: 10
+  # The format of the %scavenger_return_count_formatted% placeholder
+  # All PlaceholderAPI placeholders will work here
+  # Full colour support as well
+  placeholderapi-format: "&3Amount returned: &3%scavenger_return_count%"
+
+  # A list of custom sounds
+  # The sounds have to be from here: https://hub.spigotmc.org/javadocs/bukkit/org/bukkit/Sound.html
+  # The volume and pitch are optional, pitch must be between 0.1-2.0
+  sounds:
+    # Played for everyone when the start countdown is clicking
+    start-countdown:
+      sound: BLOCK_NOTE_BLOCK_CHIME
+      volume: 1
+      pitch: 1
+
+    # Played for everyone when the game starts
+    start:
+      sound: ENTITY_ENDER_DRAGON_GROWL
+      volume: 10
+      pitch: 2
+
+    # Played for everyone when the pvp countdown is clicking
+    pvp-countdown:
+      sound: BLOCK_NOTE_BLOCK_PLING
+
+    # Played for everyone when PVP is enabled
+    pvp:
+      sound: ENTITY_ENDER_DRAGON_GROWL
+
+    # Played for everyone when the game is over
+    final-win:
+      sound: UI_TOAST_CHALLENGE_COMPLETE
+
+    # Played for the player in case they pick up an item they will need
+    item-pickup-notification:
+      sound: BLOCK_NOTE_BLOCK_BIT
+      pitch: 1.1
+
+    # Played for the player in case they craft an item they will need
+    item-craft-notification:
+      sound: BLOCK_NOTE_BLOCK_BIT
+      pitch: 1.1
+
+  # Execute a special set of commands through the console whenever the game stage is updated
+  # Set it to {} to not execute any
+  execute-commands:
+    # When the game is 'loaded' and the start countdown is initiated
+    onload: { }
+    # When the countdown is finished
+    onstart:
+      - effect give @a invisibility 10 10 true
+    # When the grace period is over
+    onpvp: { }
+    # When the game is won
+    onfinish: { }
+
+  # Given in seconds, set it to 0 to start instantly
+  start-count-down: 15
+
+  grace-period:
+    # Given in seconds, set it to 0 to enable PVP on start, -1 to disable PVP entirely
+    time: 180
+
+    # Whether to disable certain damage types during grace period
+    disable-fire: true
+    disable-fall: true
 
   # The size the worldborder on start and during the game
   border-size:
-    small: 50
-    expanded: 500
+    small: 70
+    expanded: 1500
 
   # How many winners to wait for the game to end
-  winners: 2
+  winners: 3
+
+  # Whether to clear players' inventories when the game starts
+  clear-inventory:
+    on-start: true
+    on-stop: true
 
   # The allowed worlds for the game
   worlds:
-    - world
-    - world_nether
-    - world_the_end
+    - event_world
+    - event_world_nether
+    - event_world_the_end
 
   # The spawnpoint of the world where players respawn
   spawnpoint:
-    world: world
-    x: 12
-    y: 65
-    z: 12
+    world: event_world
+    x: 153
+    y: 68
+    z: 158
+
+  spawn-npcs-before-start: true
 
   # A list of NPCs to spawn in game
   return-npcs:
     doug:
       displayname: "&8[&cNPC&8] &rDoug"
       skin: "ApexHosting"
-      world: world
+      world: event_world
       look-close: true
-      x: 0
-      y: 65
-      z: 0
+      x: 137.6
+      y: 68
+      z: 158.5
 
   # Settings for the NPCs GUIs
   return-gui:
 
     # The title of the GUI
-    title: "&cSome title"
+    title: "&#206694Items"
 
     # The amount of rows in the GUI, min 1, max 6
     rows: 3
@@ -135,7 +233,7 @@ settings:
         # A special amount of items or AUTO to parse it for the item
         amount: AUTO
         # The name of the item, available placeholders: %itemname%, %amount%
-        name: "%itemname% test"
+        name: "&r%itemname%"
 
       # Settings for completed items, all settings the same as above
       completed:
@@ -159,8 +257,9 @@ settings:
     show-players: 10
 
   drop-items:
+
     # Whether to drop items when a user is killed
-    on-pvp-kill: true
+    on-pvp-kill: false
 
     # Whether to drop items when a user dies on their own
     on-natural-death: true
@@ -174,39 +273,50 @@ settings:
     # A valid BarColor or AUTO to let the plugin handle colouring (https://hub.spigotmc.org/javadocs/spigot/org/bukkit/boss/BarColor.html)
     colour: AUTO
 
+  # Whether to ensure starter items are not dropped on death
+  keep-starter-items: true
+
   # A list of items given to everyone on start
   starter-items:
 
-    # This is to show all the settings of the items
-    test-item:
-      material: BARRIER
-      amount: 3
-      name: "&6&lThis is an item's name"
+    compass:
+      material: COMPASS
+      name: "&6Golden Compass"
       lore:
-        - "This is lore line #1"
-        - "This is lore line #2"
-        - "... and so on ..."
-      enchants:
-        mending: 1
-        unbreaking: 3
-      hide-enchants: false
+        - "&c"
+        - "&e&oUse this item to get back to spawn"
+        - "&e&oin case you ever get lost!"
+      point-to:
+        world: event_world
+        x: 137.6
+        y: 68
+        z: 158.5
 
     book:
       material: WRITTEN_BOOK
-      name: "&4&lStarter Instructions"
-      hide-enchants: true
-      enchantments:
-        mending: 1
+      name: "&3⛏ &bStarter Instructions!"
       author: "&cDoug"
       type: original
       pages:
         1: |
-          Welcome to ApexHosting's Scavenger Hunt event!
+          Welcome to ApexHosting's &3&oScavenger Hunt &revent!
+          &8&m                            &r
 
-          The first 3 to complete the hunt get an amazon gift card as well as free hosting!
+          The first &33 &rto complete the hunt get an &#f68e00Amazon Gift Card&r as well as free server hosting!
 
+          &8&oContinue reading for rules & objectives:                           ⤵
         2: |
-          Page 2 yes
+          &l1. &rGo out in the world and gather the necessary items. Bring these items to Doug, located at spawn.
+
+          &l2. &rThe items needed can be checked with him or through the &3&o/items &rcommand!
+
+          &l3. &rPVP will be enabled after a few minutes!    &8&oContinue reading: ⤵
+        3: |
+          If you die to another player, you will &nrespawn with all your items&r.
+
+          If you happen to die to nature causes, your &nitems will be dropped &ron the ground, but you will still respawn!
+
+          &3&oBest of luck and we hope have fun!
 
   # A list of required items to win the game
   # You can use all item settings mentioned above but
@@ -230,7 +340,8 @@ settings:
     egg:
       material: EGG
     bread:
-      material: BREAD  
+      material: BREAD
 ```  
+
   
 ---
