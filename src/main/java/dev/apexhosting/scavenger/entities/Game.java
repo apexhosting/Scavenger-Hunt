@@ -24,8 +24,7 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.potion.PotionEffect;
-import org.bukkit.potion.PotionEffectType;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.scoreboard.DisplaySlot;
@@ -38,14 +37,16 @@ import java.util.*;
 public class Game {
 
     // Settings
+    private final boolean keepStarterItems;
     private final boolean dropItemsOnKill;
     private final boolean dropItemsOnDeath;
     private final boolean scoreBoardEnabled;
     private final boolean pvpBossBarEnabled;
-    private final boolean clearInventoryOnStart;
     private final boolean clearInventoryOnStop;
+    private final boolean clearInventoryOnStart;
     private final boolean gracePeriodDisableFireDamage;
     private final boolean gracePeriodDisableFallDamage;
+    private final boolean spawnNPCsBeforeStart;
     private final int scoreboardShowPlayers;
     private final int gracePeriod;
     private final int smallBorderSize;
@@ -59,8 +60,9 @@ public class Game {
     private final Location spawnPoint;
     private final ArrayList<ReturnNPC> NPCs;
     private final ArrayList<World> allowedWorlds;
-    private final ArrayList<Game.Item> requiredItems;
     private final ArrayList<ItemStack> starterItems;
+    private final ArrayList<Game.Item> requiredItems;
+    private final ArrayList<ItemStack> requiredItemStacks;
     private final Game.ReturnGui returnGui;
     private final HashMap<String, ArrayList<String>> specialCommands;
     private final HashMap<String, CustomSound> sounds;
@@ -88,14 +90,16 @@ public class Game {
         String basepath = "settings.";
 
         // Get basic config settings
+        this.keepStarterItems = config.getBoolean(basepath + "keep-starter-items");
         this.dropItemsOnKill = config.getBoolean(basepath + "drop-items.on-pvp-kill");
         this.dropItemsOnDeath = config.getBoolean(basepath + "drop-items.on-natural-death");
         this.scoreBoardEnabled = config.getBoolean(basepath + "scoreboard.enabled");
         this.pvpBossBarEnabled = config.getBoolean(basepath + "pvp-bossbar.enabled");
-        this.clearInventoryOnStart = config.getBoolean(basepath + "clear-inventory.on-start");
         this.clearInventoryOnStop = config.getBoolean(basepath + "clear-inventory.on-stop");
+        this.clearInventoryOnStart = config.getBoolean(basepath + "clear-inventory.on-start");
         this.gracePeriodDisableFireDamage = config.getBoolean(basepath + "grace-period.disable-fire");
         this.gracePeriodDisableFallDamage = config.getBoolean(basepath + "grace-period.disable-fall");
+        this.spawnNPCsBeforeStart = config.getBoolean(basepath + "spawn-npcs-before-start");
 
         this.scoreboardShowPlayers = config.getInt(basepath + "scoreboard.show-players");
         this.gracePeriod = config.getInt(basepath + "grace-period.time");
@@ -108,7 +112,7 @@ public class Game {
         this.pvpBossBarColour = config.getString(basepath + "pvp-bossbar.colour");
         this.scoreboardTitle = config.getString(basepath + "scoreboard.title");
         this.scoreboardLineFormat = config.getString(basepath + "scoreboard.line-format");
-        this.spawnPoint = new Location(Bukkit.getWorld(config.getString(basepath + "spawnpoint.world", "")), config.getInt(basepath + "spawnpoint.x"), config.getInt(basepath + "spawnpoint.y"), config.getInt(basepath + "spawnpoint.z"));
+        this.spawnPoint = new Location(Bukkit.getWorld(config.getString(basepath + "spawnpoint.world", "")), config.getDouble(basepath + "spawnpoint.x"), config.getDouble(basepath + "spawnpoint.y"), config.getDouble(basepath + "spawnpoint.z"), (float) config.getDouble(basepath + "spawnpoint.yaw", 90), (float) config.getDouble(basepath + "spawnpoint.pitch", 0));
 
         // Load special event commands
         this.specialCommands = new HashMap<>();
@@ -153,15 +157,16 @@ public class Game {
             String npcDisplayName = config.getString(npcPath + "displayname");
             String skin = config.getString(npcPath + "skin");
             World world = Bukkit.getWorld(config.getString(npcPath + "world", ""));
-            int x = config.getInt(npcPath + "x");
-            int y = config.getInt(npcPath + "y");
-            int z = config.getInt(npcPath + "z");
+            double x = config.getDouble(npcPath + "x");
+            double y = config.getDouble(npcPath + "y");
+            double z = config.getDouble(npcPath + "z");
 
             if (world == null) throw new NullPointerException("There was an issue loading one of the worlds for an NPC!");
 
             NPC npc;
             try {
                 npc = npcRegistry.createNPC(EntityType.PLAYER, npcDisplayName);
+                npc.setAlwaysUseNameHologram(true);
                 if (lookClose) npc.getOrAddTrait(LookClose.class).lookClose(true);
                 npc.getOrAddTrait(Gravity.class).gravitate(false);
                 npc.getOrAddTrait(SkinTrait.class).setSkinName(skin);
@@ -169,13 +174,27 @@ public class Game {
                 throw new IllegalArgumentException("There was an issue creating one of the NPCs: (" + npcName + "): " + exception.getMessage());
             }
 
-            this.NPCs.add(new Game.ReturnNPC(npcDisplayName, npc, new Location(world, x, y, z)));
+            Location location = new Location(world, x, y, z);
+            if (spawnNPCsBeforeStart) npc.spawn(location);
+            this.NPCs.add(new Game.ReturnNPC(npcDisplayName, npc, location));
         }
 
         // Load items
         this.setStage(Stage.NONE);
         this.requiredItems = Utils.getItemsFromConfig(config, basepath + "required-items");
-        this.starterItems = Utils.getItemStacksFromItems(Utils.getItemsFromConfig(config, basepath + "starter-items"));
+        this.requiredItemStacks = new ArrayList<>();
+        for (Game.Item item : requiredItems) {
+            this.requiredItemStacks.add(item.getItemStack());
+        }
+
+        this.starterItems = new ArrayList<>();
+        for (Game.Item item : Utils.getItemsFromConfig(config, basepath + "starter-items")) {
+            ItemStack itemStack = item.getItemStack();
+            ItemMeta itemMeta = itemStack.getItemMeta();
+            itemMeta.getPersistentDataContainer().set(new NamespacedKey(plugin, "starter-item"), PersistentDataType.INTEGER, 1);
+            itemStack.setItemMeta(itemMeta);
+            this.starterItems.add(itemStack);
+        }
     }
 
 
@@ -204,7 +223,7 @@ public class Game {
         this.setStage(Stage.LOADING);
 
         // Spawn NPCs
-        for (ReturnNPC npc : NPCs) npc.getNPC().spawn(npc.getLocation());
+        for (ReturnNPC npc : NPCs) if (!npc.getNPC().isSpawned()) npc.getNPC().spawn(npc.getLocation());
 
         // Start countdown
         this.scheduleTasks.add(new BukkitRunnable() {
@@ -289,12 +308,22 @@ public class Game {
             for (Player player : world.getPlayers()) {
                 player.sendMessage(HexUtils.colorify(message));
                 if (sounds != null && sounds.length > 0) for (CustomSound gameSound : sounds) {
-                    if (gameSound != null) {
-                        player.playSound(player.getLocation(), gameSound.getSound(), gameSound.getVolume(), gameSound.getPitch());
-                    }
+                    if (gameSound != null) player.playSound(player.getLocation(), gameSound.getSound(), gameSound.getVolume(), gameSound.getPitch());
                 }
             }
         }
+    }
+
+    /**
+     * Play a specific custom sound to a player
+     *
+     * @param player    The player to play it for
+     * @param soundName The name of the custom sound
+     */
+    public void playSound(Player player, String soundName) {
+        CustomSound customSound = this.sounds.get(soundName);
+        if (customSound == null) return;
+        player.playSound(player.getLocation(), customSound.getSound(), customSound.getVolume(), customSound.getPitch());
     }
 
     private void setWorldBorder(int size) {
@@ -390,7 +419,7 @@ public class Game {
         for (Game.ReturnNPC returnNPC : NPCs) {
             NPC npc = returnNPC.getNPC();
             if (npc == null || !npc.isSpawned()) continue;
-            npc.despawn();
+            if (!spawnNPCsBeforeStart) npc.despawn();
         }
 
         // Hide scoreboard
@@ -411,6 +440,7 @@ public class Game {
         this.setWorldBorder(smallBorderSize);
 
         // Clear stored invs
+        this.playerReturnedItems.clear();
         this.playerInventories.clear();
         this.setStage(Stage.NONE);
         this.pvpEnabled = false;
@@ -463,7 +493,7 @@ public class Game {
      * @return How many of an item is needed or 0 if it is not required
      */
     public int getRequirementForItem(ItemStack item) {
-        for (ItemStack requiredItem : Utils.getItemStacksFromItems(requiredItems)) if (requiredItem.isSimilar(item)) return requiredItem.getAmount();
+        for (ItemStack requiredItem : requiredItemStacks) if (requiredItem.isSimilar(item)) return requiredItem.getAmount();
         return 0;
     }
 
@@ -537,6 +567,15 @@ public class Game {
     }
 
     /**
+     * Give all the starter items to a specific player
+     *
+     * @param player The player to give it to
+     */
+    public void giveStarterItems(Player player) {
+        player.getInventory().addItem(starterItems.toArray(ItemStack[]::new));
+    }
+
+    /**
      * Check if a player exists in the game
      *
      * @param player The player to check
@@ -553,7 +592,10 @@ public class Game {
      * @return The {@link NPC} or null in case it does not exist in the game
      */
     public NPC getNPC(Entity entity) {
-        return npcRegistry.getNPC(entity);
+        NPC npc = npcRegistry.getNPC(entity);
+        if (npc == null) return null;
+        if (npc.getOwningRegistry() != npcRegistry) return null;
+        return npc;
     }
 
     /**
@@ -565,7 +607,7 @@ public class Game {
      */
     public boolean hasPlayerCompletedItem(Player player, ItemStack item) {
         for (ItemStack storedItem : playerReturnedItems.get(player.getUniqueId())) {
-            if (storedItem.getType() == item.getType() && item.isSimilar(storedItem)) return true;
+            if (item.isSimilar(storedItem)) return true;
         }
         return false;
     }
@@ -593,6 +635,13 @@ public class Game {
      */
     public ArrayList<Item> getRequiredItems() {
         return requiredItems;
+    }
+
+    /**
+     * @return All the required items to complete the game
+     */
+    public ArrayList<ItemStack> getRequiredItemStacks() {
+        return requiredItemStacks;
     }
 
     /**
@@ -627,6 +676,13 @@ public class Game {
     }
 
     /**
+     * @return An {@link ArrayList} or the starter {@link ItemStack}-s
+     */
+    public ArrayList<ItemStack> getStarterItems() {
+        return starterItems;
+    }
+
+    /**
      * @return Whether the game is currently playing
      */
     public boolean isInProgress(boolean... excludeBeforeStarted) {
@@ -646,6 +702,13 @@ public class Game {
      */
     public boolean shouldDropItemsOnDeath() {
         return dropItemsOnDeath;
+    }
+
+    /**
+     * @return Whether the starter items should be retrained
+     */
+    public boolean shouldKeepStarterItems() {
+        return keepStarterItems;
     }
 
     /**

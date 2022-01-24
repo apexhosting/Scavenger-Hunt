@@ -68,7 +68,10 @@ public final class Scavenger extends JavaPlugin implements Listener, TabComplete
         this.saveDefaultConfig();
         this.config = this.getConfig();
 
-        if (game != null) game.stop();
+        if (game != null) {
+            this.game.getNpcRegistry().deregisterAll();
+            this.game.stop();
+        }
 
         // Load all the pre-configured games
         try {

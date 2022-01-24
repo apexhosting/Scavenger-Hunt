@@ -242,7 +242,7 @@ public class EventListener implements Listener {
         if (e.getClickedInventory() == null) return;
 
         if (!game.playerExists(player)) return;
-        if (!game.isInProgress()) return;
+        if (!game.isInProgress(true)) return;
 
         if (!game.getPlayerInventories().containsValue(e.getInventory())) return;
 
