@@ -133,7 +133,7 @@ public class Game {
         }
 
         // Load GUI
-        ArrayList<Game.Item> items = Utils.getItemsFromConfig(config, basepath + "return-gui.items");
+        ArrayList<Game.Item> items = Utils.getItemsFromConfig(plugin, config, basepath + "return-gui.items");
         this.returnGui = new Game.ReturnGui(config.getString(basepath + "return-gui.title"), config.getInt(basepath + "return-gui.rows"), items.get(0), items.get(1));
 
         // Load allowed worlds
@@ -181,14 +181,14 @@ public class Game {
 
         // Load items
         this.setStage(Stage.NONE);
-        this.requiredItems = Utils.getItemsFromConfig(config, basepath + "required-items");
+        this.requiredItems = Utils.getItemsFromConfig(plugin, config, basepath + "required-items");
         this.requiredItemStacks = new ArrayList<>();
         for (Game.Item item : requiredItems) {
             this.requiredItemStacks.add(item.getItemStack());
         }
 
         this.starterItems = new ArrayList<>();
-        for (Game.Item item : Utils.getItemsFromConfig(config, basepath + "starter-items")) {
+        for (Game.Item item : Utils.getItemsFromConfig(plugin, config, basepath + "starter-items")) {
             ItemStack itemStack = item.getItemStack();
             ItemMeta itemMeta = itemStack.getItemMeta();
             itemMeta.getPersistentDataContainer().set(new NamespacedKey(plugin, "starter-item"), PersistentDataType.INTEGER, 1);

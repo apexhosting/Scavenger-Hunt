@@ -263,6 +263,7 @@ settings:
       name: "&3⛏ &bStarter Instructions!"
       author: "&cDoug"
       type: original
+      items-item: true
       pages:
         1: |
           Welcome to ApexHosting's &3&oScavenger Hunt &revent!

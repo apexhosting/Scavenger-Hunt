@@ -1,5 +1,6 @@
 package dev.apexhosting.scavenger.utils;
 
+import dev.apexhosting.scavenger.Scavenger;
 import dev.apexhosting.scavenger.entities.Game;
 import org.apache.commons.lang.StringUtils;
 import org.bukkit.Bukkit;
@@ -13,6 +14,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.BookMeta;
 import org.bukkit.inventory.meta.CompassMeta;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -60,7 +62,7 @@ public class Utils {
      * @return A list of {@link Game.Item}-ss
      * @throws Exception In case any of the settings are invalid
      */
-    public static ArrayList<Game.Item> getItemsFromConfig(FileConfiguration config, String basePath) throws Exception {
+    public static ArrayList<Game.Item> getItemsFromConfig(Scavenger plugin, FileConfiguration config, String basePath) throws Exception {
         ArrayList<Game.Item> items = new ArrayList<>();
 
         for (String itemName : config.getConfigurationSection(basePath).getKeys(false)) {
@@ -71,6 +73,7 @@ public class Utils {
             String name = null;
             String amountRaw = "1";
             boolean hideEnchants = false;
+            boolean itemsItem = false;
             ArrayList<String> lore = new ArrayList<>();
             HashMap<Enchantment, Integer> enchantments = new HashMap<>();
 
@@ -99,6 +102,8 @@ public class Utils {
                     case "point-to" -> {
                         pointTo = new Location(Bukkit.getWorld(config.getString(itemPath + ".point-to.world")), config.getDouble(itemPath + ".point-to.x"), config.getDouble(itemPath + ".point-to.y"), config.getDouble(itemPath + ".point-to.z"));
                     }
+
+                    case "items-item" -> itemsItem = Boolean.parseBoolean(value);
 
                     case "author" -> author = HexUtils.colorify(value);
                     case "pages" -> {
@@ -139,6 +144,7 @@ public class Utils {
 
             ItemMeta meta = itemStack.getItemMeta();
             if (meta != null) {
+                if (itemsItem) meta.getPersistentDataContainer().set(new NamespacedKey(plugin, "items-item"), PersistentDataType.INTEGER, 1);
                 if (name != null && name.length() > 0) meta.setDisplayName(name);
                 if (lore.size() > 0) meta.setLore(lore);
                 if (hideEnchants) meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);

@@ -293,6 +293,24 @@ public class EventListener implements Listener {
     }
 
     @EventHandler
+    public void onPlayerInteract(PlayerInteractEvent e) {
+        if (e.getHand() == EquipmentSlot.OFF_HAND) return;
+        if (e.getItem() == null || e.getItem().getItemMeta() == null) return;
+        if (!e.getItem().getItemMeta().getPersistentDataContainer().has(new NamespacedKey(plugin, "items-item"), PersistentDataType.INTEGER)) return;
+
+        Player player = e.getPlayer();
+
+        if (!player.isSneaking()) return;
+        if (!game.isInProgress(true) || !game.playerExists(e.getPlayer())) {
+            player.sendMessage(plugin.getLang("not-in-progress"));
+            return;
+        }
+
+        player.openInventory(game.getInventory(player, false));
+        e.setCancelled(true);
+    }
+
+    @EventHandler
     public void onPlayerInteractAtEntity(PlayerInteractEntityEvent e) {
         if (e.getHand() == EquipmentSlot.OFF_HAND) return;
 
