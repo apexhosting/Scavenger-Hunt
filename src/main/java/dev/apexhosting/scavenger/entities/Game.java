@@ -217,7 +217,6 @@ public class Game {
             this.playerReturnedItems.put(player.getUniqueId(), new ArrayList<>());
             player.setInvulnerable(true);
             player.setGameMode(GameMode.SURVIVAL);
-            player.teleport(spawnPoint);
         }
 
         this.setStage(Stage.LOADING);
@@ -851,7 +850,7 @@ public class Game {
          */
         public ItemStack getItemStack(Material material, int amount) {
             if (materialRaw.equalsIgnoreCase("AUTO") || amountRaw.equalsIgnoreCase("AUTO")) {
-                if (material != null) this.material = material;
+                if (material != null && this.material == null) this.material = material;
                 if (amount != 0) this.amount = amount;
                 return this.getItemStack(amount != 0 || material != null);
             }
