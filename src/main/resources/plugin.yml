@@ -1,5 +1,5 @@
 name: Scavenger
-version: 1.0
+version: 2.0
 main: dev.apexhosting.scavenger.Scavenger
 api-version: 1.18
 prefix: Scavenger

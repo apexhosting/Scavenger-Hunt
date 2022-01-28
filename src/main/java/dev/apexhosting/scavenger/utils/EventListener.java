@@ -386,8 +386,6 @@ public class EventListener implements Listener {
     public void onPlayerJoin(PlayerJoinEvent e) {
         Player player = e.getPlayer();
 
-        if (plugin.getDescription().getVersion().startsWith("1.0")) player.sendMessage(HexUtils.colorify("\n&4&lWARNING&f: &cThis server is currently using an alpha version of &4Scavenger&c. Here be dragons!\n&c &c"));
-
         if (!game.isInProgress()) return;
         if (!game.playerExists(player)) {
             player.setGameMode(GameMode.SPECTATOR);
