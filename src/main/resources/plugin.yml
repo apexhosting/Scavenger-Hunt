@@ -1,16 +1,41 @@
 name: Scavenger
-version: 1.0
-main: dev.geri.scavenger.Scavenger
+version: 2.0
+main: dev.apexhosting.scavenger.Scavenger
 api-version: 1.18
 prefix: Scavenger
 authors: [ Geri ]
 description: A simple scavenger hunt plugin
-website: https://geri.dev/
+website: https://apexminecrafthosting.com/
 depend:
   - Citizens
+softdepend:
+  - PlaceholderAPI
 
 commands:
+  items:
+    permission: scavenger.player.items
+    description: See what items are left to be colleted!
   scavenger:
-    aliases: [s, game]
+    aliases: [ s, game ]
     permission: scavenger.help
     description: Manage all commands from the scavenger plugin
+
+permissions:
+  scavenger.player.items:
+    description: Permission to use the /items command to see what items are left
+    default: true
+  scavenger.help:
+    description: Permission to get help with the plugin
+    default: op
+  scavenger.admin.reload:
+    description: Permission to hot reload the plugin
+    default: op
+  scavenger.admin.start:
+    description: Permission to start a new game
+    default: op
+  scavenger.admin.stop:
+    description: Permission to stop the currently game
+    default: op
+  scavenger.admin.cheat:
+    description: Permission to cheat all the required items in
+    default: op

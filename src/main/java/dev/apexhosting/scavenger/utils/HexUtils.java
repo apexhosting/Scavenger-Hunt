@@ -1,4 +1,4 @@
-package dev.geri.scavenger.utils;
+package dev.apexhosting.scavenger.utils;
 
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.command.CommandSender;
